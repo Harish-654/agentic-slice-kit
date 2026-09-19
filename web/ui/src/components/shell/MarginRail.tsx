@@ -1,5 +1,6 @@
 import type { FC } from 'react'
 import { ArrowRightIcon } from 'lucide-react'
+import { ConceptMap } from '@/components/atlas/ConceptMap'
 import { RouteMini } from '@/components/atlas/RouteMini'
 import { CodeCoach } from '@/components/tutor/CodeCoach'
 import { Documents } from '@/components/tutor/Documents'
@@ -33,6 +34,11 @@ export const MarginRail: FC<{ onView: (v: View) => void }> = ({ onView }) => {
       <Section title="Route" to={{ view: 'route', label: 'Open' }} onView={onView}>
         <RouteMini steps={missionRoute(progress)} />
       </Section>
+      {progress.map ? (
+        <Section title="Concept map">
+          <ConceptMap map={progress.map} />
+        </Section>
+      ) : null}
       <Section title="Ideas to watch" to={{ view: 'twin', label: 'Your twin' }} onView={onView}>
         <IdeasToWatch marks={misconceptionMarks(progress)} limit={3} />
       </Section>

@@ -9,7 +9,7 @@ import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { ChoicesCard, CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
+import { ChoicesCard, CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, PlanMapCard, QuizCard } from './cards'
 import type { CardMsg, LessonMsg } from '@/lib/api'
 import { useCodeStatus } from '@/lib/useCodeStatus'
 import { useTutor } from './context'
@@ -22,6 +22,7 @@ const TOOLS = {
     open_question: OpenQuestionCard,
     code_task: CodeTaskCard,
     choices: ChoicesCard,
+    plan_map: PlanMapCard,
     feedback: FeedbackCard,
     end: EndCard,
     notice: NoticeCard,
@@ -164,14 +165,40 @@ function useScrollToNewest() {
     // left the new lesson hidden under the footer until the student scrolled to find it.
     let frame = 0
     let tries = 0
+    let following = true
+    let watcher: ResizeObserver | undefined
+    const find = () =>
+      kind === 'lesson' ? document.getElementById(`${key}-lesson_header`) : document.getElementById('thread-end')
+    const align = (behavior: ScrollBehavior) =>
+      find()?.scrollIntoView({ block: kind === 'lesson' ? 'start' : 'end', behavior })
     const go = () => {
-      const target =
-        kind === 'lesson' ? document.getElementById(`${key}-lesson_header`) : document.getElementById('thread-end')
-      if (target) target.scrollIntoView({ block: kind === 'lesson' ? 'start' : 'end', behavior: 'smooth' })
-      else if (tries++ < 60) frame = requestAnimationFrame(go)
+      if (!find()) {
+        if (tries++ < 60) frame = requestAnimationFrame(go)
+        return
+      }
+      align('smooth')
+      // A diagram or a web font finishes drawing after this and makes the lesson taller, which would
+      // leave its menu off the bottom of the screen. Stay aligned while the page settles, and stop the
+      // moment the student takes over the scrolling themselves.
+      const content = document.getElementById('thread-end')?.parentElement
+      if (content && typeof ResizeObserver !== 'undefined') {
+        watcher = new ResizeObserver(() => following && align('auto'))
+        watcher.observe(content)
+      }
     }
+    const stopFollowing = () => {
+      following = false
+    }
+    const events = ['wheel', 'touchmove', 'keydown', 'mousedown'] as const
+    events.forEach((e) => window.addEventListener(e, stopFollowing, { passive: true }))
+    const settled = window.setTimeout(stopFollowing, 4000)
     frame = requestAnimationFrame(go)
-    return () => cancelAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(settled)
+      watcher?.disconnect()
+      events.forEach((e) => window.removeEventListener(e, stopFollowing))
+    }
   }, [key, kind, working])
 }
 

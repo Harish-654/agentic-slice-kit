@@ -47,6 +47,13 @@ function convertMessage(m: Msg): ThreadMessageLike {
       }
     case 'card':
       return { id: m.id, role: 'assistant', status: done, content: checkParts(m) }
+    case 'map':
+      return {
+        id: m.id,
+        role: 'assistant',
+        status: done,
+        content: [call('plan_map', { flowchart: m.flowchart, mindmap: m.mindmap }, true)],
+      }
     case 'choices':
       return {
         id: m.id,

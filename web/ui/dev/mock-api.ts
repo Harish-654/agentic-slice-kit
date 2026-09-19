@@ -25,6 +25,10 @@ const progress = (concepts: ConceptProgress[], o: Partial<Progress> = {}): Progr
     prereqs: ['classes-and-objects', 'method-calls'],
     subtopics: ['overriding-methods', 'super-calls'],
   },
+  map: {
+    flowchart: 'flowchart TD\n  a[Classes and objects] --> b[Method calls] --> c[Overriding methods] --> d[Super calls] --> e[Inheritance]\n  classDef known fill:#d1fae5,stroke:#059669,color:#064e3b\n  classDef now stroke:#3b4bb0,stroke-width:3px\n  class a known\n  class c now',
+    mindmap: 'mindmap\n  root((Inheritance))\n    Classes and objects 86%\n    Method calls 78%\n    Overriding methods 42%\n    Super calls 0%',
+  },
   answer_mode: 'mcq',
   interests: ['chess', 'football'],
   use_docs: true,
@@ -65,6 +69,8 @@ const lesson = (id: string, o: Record<string, unknown> = {}): Msg =>
 
 const answered = (chosen: number, correct: boolean) => ({ chosen, correct_index: 1, correct })
 
+const planMap: Msg = { id: '0', role: 'assistant', kind: 'map', flowchart: 'flowchart TD\n  a[Classes and objects] --> b[Method calls] --> c[Overriding methods] --> e[Inheritance]', mindmap: '' }
+
 const wrongTrail: Msg[] = [
   lesson('1', { style: 'plain', quiz: { question: 'What does Coach().opening() return?', code: null, options: [{ text: '"e4", because the parent defined it first' }, { text: '"d4", because the subclass version is found first' }, { text: 'An error: the method is defined twice' }], answered: answered(0, false) } }),
   { id: '2', role: 'user', kind: 'answer', text: '"e4", because the parent defined it first' },
@@ -92,6 +98,7 @@ const FIXTURES: Record<string, Snapshot> = {
   open: base([lesson('1', { quiz: null, open: { question: 'In your own words: why does Coach().opening() not return "e4"?', code: null, answered: null } })]),
   code: base([lesson('1', { quiz: null, code_task: { question: 'Write a class Rook(Player) whose opening() returns "Nf3".', starter: 'class Rook(Player):\n    ', answered: null } })], 'waiting_student', progress(journey, { answer_mode: 'code' })),
   guided: base([
+    planMap,
     lesson('1', { quiz: null }),
     { id: '2', role: 'assistant', kind: 'choices', options: ['quiz', 'example', 'more_detail', 'deeper', 'skip', 'stop'], chosen: null },
   ], 'waiting_choice'),

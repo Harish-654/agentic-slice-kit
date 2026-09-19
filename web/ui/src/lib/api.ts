@@ -91,7 +91,9 @@ export type CardMsg = {
   code_task: CodeTaskQ | null
 }
 export type Choice = 'quiz' | 'example' | 'more_detail' | 'deeper' | 'skip' | 'stop'
-export type Msg = LessonMsg | AnswerMsg | FeedbackMsg | EndMsg | NoticeMsg | ChoicesMsg | CardMsg
+/** A guided session's plan as pictures, drawn once when it starts. Both are Mermaid source made by the server. */
+export type MapMsg = { id: string; role: 'assistant'; kind: 'map'; flowchart: string; mindmap: string }
+export type Msg = LessonMsg | AnswerMsg | FeedbackMsg | EndMsg | NoticeMsg | ChoicesMsg | CardMsg | MapMsg
 
 export type ConceptProgress = {
   concept: string
@@ -107,6 +109,8 @@ export type Progress = {
   mode: 'quick' | 'guided'
   /** Guided sessions: what the topic builds on, worked out once at the start. */
   plan: { target: string; prereqs: string[]; subtopics: string[] } | null
+  /** The plan coloured by what the student knows now, as a flowchart and as a mind map. */
+  map: { flowchart: string; mindmap: string } | null
   answer_mode: AnswerMode // the type of the NEXT question
   interests: string[]
   use_docs: boolean

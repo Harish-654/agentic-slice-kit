@@ -25,7 +25,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from demo.tutor import coach, learner, learners, library, sandbox, session
+from demo.tutor import coach, learner, learners, library, sandbox, session, visuals
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
@@ -135,7 +135,7 @@ def _lesson_message(v) -> dict:
            # Stored as <student>__<file>#n; the student only ever knows their own file name.
            "citations": [c.split("__", 1)[-1] for c in p["citations"]],
            "explanation": p["explanation"],
-           "diagram": p.get("diagram")}
+           "diagram": visuals.safe_diagram(p.get("diagram"))}
     return msg | ({"quiz": None, "open": None, "code_task": None} if p.get("held") else _card(p))
 
 
@@ -144,12 +144,18 @@ def _messages(versions) -> list[dict]:
             for v in versions if v.kind == "expert_answer" and v.payload.get("who") == "student_gap"}
     out: list[dict] = []
     choice_msgs: dict[str, dict] = {}
+    model: LearnerModel | None = None                        # the learner model as of this point in the history
     lesson_msg: dict | None = None
     lesson_payload: dict | None = None
     reply: dict | None = None
     for v in versions:
         p = v.payload
-        if v.kind == "lesson":
+        if v.kind == "learner_model":
+            model = LearnerModel.model_validate(p)
+        elif v.kind == "input" and p.get("plan") and model is not None:      # the plan was just made: show it
+            out.append({"id": f"{v.seq}-map", "role": "assistant", "kind": "map",
+                        **visuals.concept_map(p["plan"], model)})
+        elif v.kind == "lesson":
             lesson_payload, reply = p, None
             lesson_msg = _lesson_message(v)
             out.append(lesson_msg)
@@ -226,7 +232,10 @@ def _progress(s: Store, run_id: str) -> dict:
             "beliefs": sorted(model.concept_misconceptions.get(c, {}).items(),
                               key=lambda kv: -kv[1]),
         })
+    latest = s.latest(run_id, "lesson")
+    current = latest["concept"] if latest and not s.get_state(run_id).is_terminal else None
     return {"concepts": rows, "threshold": learner.MASTERY, "mode": inp.get("mode", "quick"),
+            "map": visuals.concept_map(plan, model, current) if plan else None,
             "plan": ({"target": plan["target"], "prereqs": plan["prereqs"],
                       "subtopics": plan.get("subtopics", [])} if plan else None),
             "answer_mode": model.answer_mode, "interests": model.interests,

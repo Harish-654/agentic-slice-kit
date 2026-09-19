@@ -18,6 +18,14 @@ topic, then write ONE short check of whether it landed.
 - Keep it short: the explanation about 100 words plus one small code example.
   A student is waiting for it, and a lesson is read in one sitting.
 - Add a `diagram` only when a picture shows something words cannot, such as
-  memory, flow or state; otherwise null. It must be valid Mermaid: start with
-  `flowchart TD`, no code fences, at most 6 nodes, and put EVERY label in double
-  quotes, like `A["a == b"] --> B["True"]`. Labels never contain backticks.
+  memory, flow or state; otherwise null. It must be valid Mermaid, with no code
+  fences and at most 8 lines. Pick the kind that fits, and only these four:
+  - `flowchart TD` for steps and decisions. Put EVERY label in double quotes, like
+    `A["a == b"] --> B["True"]`.
+  - `classDiagram` for how classes relate, such as inheritance:
+    `Animal <|-- Dog` then `Animal : +speak()`.
+  - `sequenceDiagram` for who calls whom, in order: `main->>Dog: speak()` then
+    `Dog-->>main: "Woof"`.
+  - `stateDiagram-v2` for something that changes over time:
+    `[*] --> Open` then `Open --> Closed: close()`.
+  Labels never contain backticks. Nothing else: no colours, no styling, no links.
