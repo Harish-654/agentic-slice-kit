@@ -8,14 +8,19 @@ import json
 from slice import callback
 from slice.store import Store
 
+from . import learners
 from .schema import LearnerModel
 
 DOMAIN = "tutor"
 
 
 def previous_model(store: Store, student_id: str) -> LearnerModel | None:
-    """The student's latest learner model from any earlier session. No table of
-    its own: a session is a run, and the model is a version inside it."""
+    """The student's current learner model. The learners table is the fast path;
+    a database from before it existed falls back to the newest run that has a
+    model for this student."""
+    saved = learners.load(store, student_id)
+    if saved:
+        return saved
     for r in store.list_runs(limit=200):           # newest first
         if r["domain"] != DOMAIN or store.meta(r["id"]).get("student_id") != student_id:
             continue
@@ -33,14 +38,16 @@ def start_session(store: Store, student_id: str, concepts: list[str],
     run = store.create_run(DOMAIN, {"student_id": student_id})
     store.append(run, "input", {"student_id": student_id, "concepts": concepts}, "student")
     store.append(run, "learner_model", model.model_dump(), "system")
+    learners.save(store, model)
     return run
 
 
 def set_answer_mode(store: Store, run_id: str, mode: str) -> None:
     """The toggle. Stored on the model, so it is still there next session."""
     m = LearnerModel.model_validate(store.latest(run_id, "learner_model"))
-    store.append(run_id, "learner_model",
-                 m.model_copy(update={"answer_mode": mode}).model_dump(), "student")
+    m = m.model_copy(update={"answer_mode": mode})
+    store.append(run_id, "learner_model", m.model_dump(), "student")
+    learners.save(store, m)
 
 
 def open_quiz(store: Store, run_id: str):

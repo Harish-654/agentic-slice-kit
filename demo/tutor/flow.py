@@ -21,7 +21,7 @@ from slice.llm import complete
 from slice.records import RunState
 from slice.retrieve import search
 
-from . import learner
+from . import learner, learners
 from .schema import Grade, LearnerModel, Lesson
 
 STUDENT_WAIT_MINUTES = 24 * 60
@@ -43,11 +43,13 @@ def _notes(chunks, teacher_notes) -> str:
     return "\n\n".join(parts)
 
 
-def build_teach_messages(concept, style, notes, interests, misconception) -> list[dict]:
+def build_teach_messages(concept, style, notes, interests, misconception,
+                         recent: bool = True) -> list[dict]:
     user = [f"CONCEPT: {concept}", f"STYLE: {style}",
             f"INTERESTS: {', '.join(interests) or 'none known'}"]
     if misconception:
-        user.append(f"MISCONCEPTION the student just chose: {misconception}")
+        when = "the student just chose" if recent else "this student held in an earlier session on this concept"
+        user.append(f"MISCONCEPTION {when}: {misconception}")
     user.append("NOTES:\n\n" + notes)
     return [{"role": "system", "content": _prompt("teach")},
             {"role": "user", "content": "\n\n".join(user)}]
@@ -70,10 +72,17 @@ def build_flow(call=complete, find=search):
         ctx.append("session_end", {"reason": reason}, produced_by="system")
         return RunState.COMPLETE
 
-    def _wrong_so_far(ctx, concept) -> tuple[int, str | None]:
-        checks = [c.payload for c in ctx.history("check") if c.payload["concept"] == concept]
-        wrong = [c for c in checks if not c["correct"]]
-        return len(wrong), (wrong[-1]["misconception"] if wrong else None)
+    def _history(ctx, model, concept) -> tuple[int, str | None, bool]:
+        """Wrong answers on this concept, this session AND earlier ones, and the
+        belief to aim at. The model already holds this session's count
+        (apply_check updates it each turn), so it is the single source: adding
+        the history too would count every wrong answer twice. A belief chosen
+        this session beats one carried over, and is worded as "just chose"."""
+        wrong, held = learner.carried(model, concept)
+        now = [c.payload["misconception"] for c in ctx.history("check")
+               if c.payload["concept"] == concept and not c.payload["correct"]
+               and c.payload["misconception"]]
+        return (wrong, now[-1], True) if now else (wrong, held, False)
 
     def handle_drafting(ctx) -> RunState:
         model = _model(ctx)
@@ -107,13 +116,13 @@ def build_flow(call=complete, find=search):
                           "resume_state": RunState.DRAFTING.value}, ctx.settings)
             return RunState.AWAITING_EXPERT
 
-        wrong, misconception = _wrong_so_far(ctx, concept)
+        wrong, misconception, recent = _history(ctx, model, concept)
         style = learner.style_for(wrong)
         lesson = call(
             settings=ctx.settings, budget=ctx.budget,
             messages=build_teach_messages(concept, style, _notes(chunks, told),
-                                          model.interests, misconception),
-            schema=Lesson, step="teach",
+                                          model.interests, misconception, recent),
+            schema=Lesson, step="teach", reasoning=False,
         )
 
         allowed = {c.cite() for c in chunks}
@@ -153,7 +162,7 @@ def build_flow(call=complete, find=search):
         else:
             g = call(settings=ctx.settings, budget=ctx.budget,
                      messages=build_grade_messages(quiz, given["text"], lesson["notes"]),
-                     schema=Grade, step="grade")
+                     schema=Grade, step="grade", reasoning=False)
             correct, mis, feedback = g.correct, g.misconception, g.feedback
 
         model = learner.apply_check(_model(ctx), concept, correct, mis)
@@ -161,6 +170,7 @@ def build_flow(call=complete, find=search):
                              "misconception": learner.slug(mis), "feedback": feedback},
                    produced_by="agent:gate" if given["mode"] == "text" else "system")
         ctx.append("learner_model", model.model_dump(), produced_by="system")
+        learners.save(ctx.store, model)
         return RunState.DRAFTING
 
     return SimpleNamespace(

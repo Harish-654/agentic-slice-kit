@@ -16,8 +16,13 @@ exactly as written. Never invent an id.
     INTERESTS, take the analogy from one of them.
   - `worked_example`: walk one concrete example line by line, showing values.
   - `diagram`: lead with the diagram, then explain it.
-- If a MISCONCEPTION is named, the student just chose it. Address that specific
-  belief head-on and say why it feels right but is not.
+- If a MISCONCEPTION is named, the student chose it just now or held it in an
+  earlier session, as the line says. Address that specific belief head-on and
+  say why it feels right but is not. For an earlier-session belief, do not
+  assume it still holds; teach so that it would be caught either way.
+- Keep it short: the explanation about 100 words plus one small code example,
+  and each quiz option under 15 words. A student is waiting for it, and a
+  lesson is read in one sitting.
 - Add a `diagram` only when a picture shows something words cannot, such as
   memory, flow or state; otherwise null. It must be valid Mermaid: start with
   `flowchart TD`, no code fences, at most 6 nodes, and put EVERY label in double
@@ -36,3 +41,30 @@ exactly as written. Never invent an id.
   options that are merely silly teach us nothing.
 - The correct option has `misconception` null.
 - `why` explains the right answer in one or two sentences.
+
+## Output
+
+Reply with ONE JSON object and nothing else, in exactly this shape. These key
+names are required; do not rename, add or nest anything else.
+
+```
+{
+  "explanation": "the lesson text",
+  "citations": ["note-id-you-used"],
+  "diagram": null,
+  "quiz": {
+    "question": "one self-contained question",
+    "code": null,
+    "options": [
+      {"text": "the correct option", "misconception": null},
+      {"text": "a wrong option", "misconception": "kebab-case-belief"},
+      {"text": "another wrong option", "misconception": "another-belief"}
+    ],
+    "correct": 0,
+    "why": "one sentence on why the correct option is right"
+  }
+}
+```
+
+`correct` is the index in `options` of the option whose `misconception` is null.
+Put the correct option in a varied position, not always first.

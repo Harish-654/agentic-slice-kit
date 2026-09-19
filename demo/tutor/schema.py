@@ -66,5 +66,10 @@ class LearnerModel(BaseModel):
     student_id: str
     mastery: dict[str, float] = {}          # concept -> 0..1
     misconceptions: dict[str, int] = {}     # tag -> times seen
+    # The same tags, kept per concept, so a new session can start where the last
+    # one stumbled instead of at the beginning.
+    concept_misconceptions: dict[str, dict[str, int]] = {}
+    wrong_answers: dict[str, int] = {}      # every wrong answer, tagged or not
+    last_seen: dict[str, float] = {}        # concept -> epoch seconds of last check
     interests: list[str] = []
     answer_mode: AnswerMode = "mcq"         # the default; free text is opt-in

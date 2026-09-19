@@ -20,7 +20,7 @@ import re
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from demo.tutor import session
+from demo.tutor import notes, session
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
@@ -36,6 +36,7 @@ app = FastAPI(title="Tutor")
 def _store() -> Store:
     s = Store(DB)
     if os.path.isdir(NOTES):
+        notes.prepare(NOTES)               # PDF/Word -> .md, only what changed
         ingest(s, NOTES)                   # idempotent: content-hash chunk ids
     return s
 
@@ -78,7 +79,7 @@ def _rich(text: str) -> str:
 
 
 BUSY = ("<p id='busy'>Checking your answer and preparing the next lesson&hellip; "
-        "this can take up to half a minute.</p><script>"
+        "this usually takes 10 to 20 seconds.</p><script>"
         "document.querySelectorAll('form').forEach(f=>f.addEventListener('submit',()=>{"
         "document.getElementById('busy').style.display='block';"
         "document.querySelectorAll('button').forEach(b=>b.disabled=true);}))</script>")

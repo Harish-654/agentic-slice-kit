@@ -10,3 +10,11 @@ not the symptom. When it is correct, `misconception` is null.
 
 `feedback` is one or two sentences to the student: what was right or wrong and
 why. Do not just give away the answer when it is wrong; point at the belief.
+
+## Output
+
+Reply with ONE JSON object and nothing else, in exactly this shape:
+
+```
+{"correct": true, "misconception": null, "feedback": "one or two sentences"}
+```

@@ -33,14 +33,17 @@ class Stub:
 
     def __init__(self, script: dict[str, list[str]]) -> None:
         self.script, self.calls, self.messages, self._n = script, [], [], {}
+        self.reasoning: list = []               # what each call asked of the model
 
     def __call__(self, *, settings, budget, messages, schema: Type[BaseModel] | None = None,
-                 model: str | None = None, step: str = "call", timeout: float = 120.0) -> Any:
+                 model: str | None = None, step: str = "call", timeout: float = 120.0,
+                 reasoning: bool | None = None) -> Any:
         base = step.split(":")[0]
         i = self._n.get(base, 0)
         self._n[base] = i + 1
         self.calls.append(step)
         self.messages.append(messages)
+        self.reasoning.append(reasoning)
         try:
             raw = self.script[base][i]
         except (KeyError, IndexError):

@@ -95,9 +95,9 @@ fails loudly at the boundary where you can still see it.
 | | |
 |---|---|
 | `slice/llm.py:122` · `complete` | Takes a `schema=`; returns a parsed instance, never a string |
-| `slice/llm.py:240` · `_parse` | Validation |
-| `slice/llm.py:247` · `_repair` | One repair pass: shows the model its own output and the validation error |
-| `slice/llm.py:226` · `_strip_fence` | Forgives a markdown fence — a formatting habit, not a broken contract |
+| `slice/llm.py:249` · `_parse` | Validation |
+| `slice/llm.py:256` · `_repair` | One repair pass: shows the model its own output and the validation error |
+| `slice/llm.py:235` · `_strip_fence` | Forgives a markdown fence — a formatting habit, not a broken contract |
 | `slice/records.py:45` · `Version` | The envelope every record travels in |
 | `slice/retrieve.py:118` · `search` | The corpus boundary — text arrives as a `Chunk` with an id, not as loose prose |
 | `slice/callback.py:37` · `answer` | The human boundary — the one place prose is unavoidable |
