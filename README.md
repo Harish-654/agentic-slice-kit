@@ -1,21 +1,334 @@
-# Agentic Slice Kit
+# Cognitive-twin tutor for Python
+
+**For judges.** This is a Python tutor that remembers what each student gets
+wrong and teaches the next lesson differently. It runs in a browser: the student
+picks topics, reads a short lesson, answers a check, and says how sure they were.
+It is built on the Agentic Slice Kit, the starter kit from the organisers; the
+kit's own guide for participants is kept further down this page, below the divider.
+
+Jump to: [Run it](#run-it-in-5-minutes) ·
+[If you have no key](#if-you-have-no-key) ·
+[Five-minute tour](#a-five-minute-tour) ·
+[What outside users told us](#what-outside-users-told-us-and-what-we-changed) ·
+[Where the agentic behaviour is](#where-the-agentic-behaviour-is) ·
+[Resetting](#resetting-and-where-state-lives) ·
+[Troubleshooting](#troubleshooting) ·
+[Repo map](#repo-map)
+
+Also in this repo: [`PRE-EVENT-ASSETS.md`](PRE-EVENT-ASSETS.md) (what was brought
+in before the event) and [`docs/PROGRESS-REPORT.md`](docs/PROGRESS-REPORT.md)
+(progress report).
+
+---
+
+## Run it in 5 minutes
+
+Every command once, in the order to run them. Run them from the repo folder.
+
+```bash
+git clone https://github.com/Harish-654/agentic-slice-kit.git
+cd agentic-slice-kit
+python -m venv .venv
+source .venv/bin/activate          # bash/zsh. fish: source .venv/bin/activate.fish
+                                   # Windows cmd: .venv\Scripts\activate
+                                   # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cp .env.example .env               # Windows cmd: copy .env.example .env
+```
+
+Now open `.env` in any editor and put your key after `OPENROUTER_API_KEY=`
+(no quotes, no spaces), then save. Do this **before** starting the server: the
+server reads `.env` once, so if you change it later, stop the server (Ctrl+C) and
+start it again.
+
+```bash
+python -m uvicorn web.student:app --port 8001
+```
+
+Then open <http://127.0.0.1:8001> in a browser. Stop the server with Ctrl+C.
+
+**What you need**
+
+- Python 3 with `venv` and `pip`. We tested Python 3.14.7 on Linux (below). The
+  Codespaces image uses Python 3.12; We did not test that version. We did not test
+  Windows or macOS either, so those activate lines are the standard ones, not
+  proven here.
+- **No Node.** The built web page is committed in `web/ui/dist/`, and the Python
+  server serves it. Node is only needed to change the page.
+- **No Docker.**
+- **A free OpenRouter key is enough** (as the team reports; this was not checked
+  independently). Get one at openrouter.ai. Lessons call the models named in
+  `.env.example`.
+- **The tests need no key** and no network: `python -m pytest`.
+- **Internet, once, for documents.** The first document upload downloads a small
+  embedding model (measured: 65 MB on disk, about 9 s download, about 16 s for the
+  first upload, on a fast connection). It is cached after that.
+- Mermaid diagrams inside lessons load from `cdn.jsdelivr.net` when a lesson has
+  one. Without internet the diagram is simply left out (code, not tried).
+
+**GitHub Codespaces.** Only port 8000 is forwarded
+(see [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)), so
+start the server like this instead, and open port 8000 from the **Ports** tab:
+
+```bash
+python -m uvicorn web.student:app --host 0.0.0.0 --port 8000
+```
+
+The Codespaces image also has the embedding model baked in, so no download there,
+and it creates `.env` from `.env.example` for you (you still add the key).
+**We could not test Codespaces (Python 3.12) at all.** Treat this paragraph as
+untested.
+
+**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally). Fresh `git clone` of `main`, a brand-new venv,
+Python 3.14.7, Linux, no `.env`, no `run.db`, no `uploads/`. Every command above
+ran as written. `pip install` finished cleanly.
+`python -m pytest -k "not integration"` gives **148 passed, 3 deselected** in
+about 2 seconds. The whole suite is 151 tests: the 3 in `tests/test_integration.py`
+need a live key and are skipped without one. The server started, `/` served the
+built page (`index.html` points at `/assets/index-BHwdL50M.js` and
+`/assets/index-dmwCZPbx.css`, both answer HTTP 200), `/classic/` and
+`/api/students/x/docs` answered, and a document upload was listed and found by
+search. No live model calls were made in this check, so the lesson text and the timings in the
+tour below come from the code and the team, not from a run we watched.
+
+---
+
+## If you have no key
+
+What still works without a key:
+
+- `python -m pytest` runs (148 pass, 3 are skipped for lack of a key). It uses a
+  scripted stand-in for the model, so it exercises the whole teach-check-adapt loop.
+- The server starts, the chat page and the classic page (`/classic/`) load.
+- Adding documents (or "Try sample notes") works: embeddings are computed on your
+  machine.
+- The "not in your documents" step works. With sample notes added and "Use my
+  documents as the source of truth" on, start a session on a topic the notes do not
+  cover (for example `photosynthesis`). The page says a topic is not in your
+  documents and offers **Teach it from general knowledge** or **Skip this topic**.
+  **Skip this topic** ends the session with "You skipped the topics your documents
+  do not cover." No model is involved up to there.
+
+What does not work: **lessons.** Every lesson and every written-answer grade needs a model.
+
+What you will see if you click **Start learning** with an empty key: a moment of
+"Reading your teacher’s notes and preparing your first lesson…", then (within a
+couple of seconds, no waiting for a timeout) a session with a red notice:
+
+> Both models unreachable (Illegal header value b'Bearer '). Run `python scripts/doctor.py` - this is usually the network or a provider outage, not your code.
+
+with a **Start a new session** button. That message is misleading: the cause is
+the empty key, not the network. The classic page shows the same text under "Session
+over". We checked this text through the API and the classic page, not in a browser.
+
+`python scripts/doctor.py` says `[ FAIL ] OPENROUTER_API_KEY is empty`, skips the
+model checks, and exits with code 1. Its two warnings (cloudflared not installed,
+embedding model not baked in) only matter inside Codespaces and can be ignored.
+
+---
+
+## A five-minute tour
+
+Use a wide window (the progress panel is on the right; on a phone it folds into
+**Your progress** at the top). A lesson takes about 10 to 25 seconds on a free key
+(the team's figure, not re-timed in the fresh-clone check). While it is written the page says
+"Writing your next lesson…". Your right-or-wrong feedback appears at once, while
+the next lesson is still being written.
+
+The labels below are copied from the page's source
+(`web/ui/src/components/tutor/`). What each step should show is read from the code
+and the offline tests; the model's wording will vary.
+
+1. **Start with a name and topics, no documents.** The start screen says "What do
+   you want to learn?". Type a name (say `judge`), and in **Topics** type
+   `mutable defaults, list slicing`. Leave the documents box alone. Click **Start
+   learning**.
+   Expect: a lesson with the topic as heading, a badge such as "Straight
+   explanation", and a badge **General knowledge** (hover it: "Written by the AI
+   from what it knows. It has not been checked against your documents."). No
+   citation badges. Under it, a **Check yourself** card with lettered options.
+
+2. **Answer wrong, and say "Certain".** Pick an option you think is wrong, click
+   **Certain** (the choices are **Just guessing**, **Fairly sure**, **Certain**),
+   then **Submit answer**. The button stays off until you have picked an option
+   and a confidence.
+   Expect, immediately: a card headed "Not quite", "That option rests on the idea:
+   ...", and "You said you were certain. You were certain, so this is the idea most
+   worth fixing." In the right panel the topic moves from "not started" to a low
+   percentage (the spec's walkthrough computes 9%) and the idea appears under
+   **Ideas to watch**. The next lesson uses a different explanation
+   style (for example "By analogy") and aims at that idea. (If you happen to be
+   right, the card says "Correct"; try another question.)
+
+3. **Click "I don’t know".** On the next question, click **I don’t know** instead of
+   answering. Expect a card headed "No problem", and the right answer marked green
+   on the question card. It costs a little progress and records no wrong idea.
+
+4. **Add the sample notes and switch on documents.** In the right panel, under
+   **Your documents**, click **Try sample notes** (the first time this downloads
+   the embedding model). Three files appear. Then, once the next lesson has
+   appeared (the switch is off while a lesson is being written), switch on **Use my
+   documents as the source of truth**. The panel says "Changes apply from the next lesson."
+   Answer the question on screen; the next lesson should carry the badge **From
+   your documents** and a badge naming the file it used, for example
+   `mutable-defaults.md#0`.
+
+5. **Write your own answers.** Switch on **Ask my next questions in my own words**
+   (bottom right of the thread). The question on screen stays as it is, and the page
+   says "Your next question will be in your own words." After you answer this one,
+   the next card is headed **Explain in your own words**. The box
+   ("Explain it in your own words…") is locked until you choose a confidence, then
+   press Enter. Expect "Checking your answer…" for a while: a model grades it.
+
+6. **A topic outside the documents.** Click **New session** (top right). Type the
+   same name, leave the field (the start screen then says "Already saved for
+   judge: ..."), type the topic `photosynthesis`, switch on **Use my documents as
+   the source of truth**, click **Start learning**.
+   Expect, quickly: "“photosynthesis” is not in your documents." with two buttons,
+   **Teach it from general knowledge** and **Skip this topic**. The tutor does not
+   guess. Pick either; the first gives a lesson badged **General knowledge**.
+
+7. **Start again with the same name and see it remember.** Click **New session**
+   and type the name from step 1 exactly (upper and lower case count). Use
+   `mutable defaults, list slicing` again. The **What you know** panel already shows
+   your earlier percentages ("Learning", "Review due" or "Got it") and **Ideas to
+   watch** still lists the idea you got wrong. This memory is stored in `run.db` on
+   the server, not in the browser.
+
+**The progress panel** (right side) shows **What you know**: one percentage per topic,
+`0%` and "not started" until you answer something, "Got it" at 75% or more, and
+"Review due" when a topic you had learnt has slid back below 75% with time.
+**Ideas to watch** lists the wrong ideas your answers pointed to, with a count.
+
+---
+
+## What outside users told us, and what we changed
+
+The team reports that people outside the team tried the tutor and suggested
+changes. Three are named below. The same table, with more detail, is in
+[`docs/PROGRESS-REPORT.md`](docs/PROGRESS-REPORT.md). The repository itself does
+not record how many people there were in all, or when, so those details are left
+open on purpose:
+
+- `TODO(team): total number of outside users (at least the three named here)`
+- `TODO(team): date and place, and whether the team watched or they tried it alone`
+- `TODO(team): one or two quotes, in their words`
+- `TODO(team): what surprised us`
+- `TODO(team): what we did not do, and why`
+
+| Who | What they did or asked for | What we changed | Where (commit, files) | How to see it in the tour |
+|---|---|---|---|---|
+| Arun N M | Tested an early version, before the UI change: the first server-rendered page, still available at `/classic/`. | The chat page came after it (assistant-ui and shadcn/ui, with a progress side panel). Later, a percentage per topic instead of a bar, and the answer controls moved inside the question card so nothing covers the options. | `82ee223` (`web/ui/`, `web/tutor_api.py`); `1ebec1a` | Open `/classic/` and compare it with the tour |
+| Kavin | Suggested a confidence level: a way to say how sure you are of an answer. | **How sure are you?** with **Just guessing / Fairly sure / Certain**, never defaulted, plus **I don’t know**. Confidence changes scoring: a certain wrong answer costs the most and the idea counts double; a guess that is right moves less. | `1ebec1a` · `demo/tutor/learner.py`, `flow.py`, `web/ui/src/components/tutor/cards.tsx` | Steps 2 and 3 |
+| Akileswaran | Raised adding documents: it did not work on the first screen. | Fixed: a file chosen on the start screen was never added, because the handler read the file list after the input had been cleared. Documents can also be added, listed and removed from the side panel; **Try sample notes** adds three sample files. | `1ebec1a` (`StartScreen.tsx`); `732a8ef` (`demo/tutor/library.py`, `web/tutor_api.py`) | Step 4 |
+| `TODO(team): who` | Asked to use their documents as the source of truth. | Documents are opt-in. Default: the model teaches from its own knowledge and says so. Switch on **Use my documents as the source of truth** and lessons come only from those documents, with citations; a topic they do not cover is asked about, not guessed. | `732a8ef` · `demo/tutor/flow.py`, `library.py`, `session.py` | Steps 1, 4 and 6 |
+| `TODO(team): who` | Asked for UI improvements. | See Arun N M's row: the chat page, percentages, answer controls inside the card. | `82ee223`, `1ebec1a` | The whole tour; the panel on the right |
+
+The commit messages do not mention outside users, and all of the tutor's commits
+fall on one day (19 September 2026), so this table records what the team reports,
+not something the git history proves.
+
+---
+
+## Where the agentic behaviour is
+
+- **A wrong answer sends the run back.** The gating step ends by returning to the
+  teaching step, which reteaches the same topic in a different style and aims at
+  the wrong idea just seen: `demo/tutor/flow.py` (`handle_gating` returns to
+  `handle_drafting`).
+- **State that persists across sessions.** One learner model per student (mastery
+  per topic, wrong ideas with counts, questions already asked, preferences),
+  saved after every answer in the `learners` table of `run.db`, with mastery
+  fading over time so old successes come due for review:
+  `demo/tutor/learners.py`, `demo/tutor/learner.py`.
+- **Waiting states where a human decides.** The run stops and waits for the
+  student's answer, and again for the "not in your documents" choice. Nobody
+  answering counts as a skip, never as consent: `demo/tutor/flow.py`,
+  `slice/callback.py`.
+- **Code decides what happens next; the model only writes.** Which topic comes
+  next, which style, when to stop, and whether a multiple-choice answer is right
+  are plain code (`demo/tutor/learner.py`, `flow.py`). The model writes lessons
+  and questions, and grades written answers.
+- **The answer key and the rubric never reach the browser.** `web/tutor_api.py`
+  sends only what the student may see; the correct option arrives after they
+  answer. Tested by `tests/test_tutor_api.py`.
+
+The design is in [`demo/tutor/TUTOR-SPEC.md`](demo/tutor/TUTOR-SPEC.md) (the
+AgentSpec, with a step-by-step walkthrough and its numbers). The event's judging
+rubric is in [`docs/ON-THE-DAY.md`](docs/ON-THE-DAY.md) under "What you are
+judged on".
+
+---
+
+## Resetting and where state lives
+
+- `run.db` is one SQLite file. It holds every session, every student's learner
+  model, and the document search index.
+- `uploads/` holds each student's documents, in one folder per name.
+- Both are created in the folder you start the server from, and both are
+  gitignored. Start the server from the repo folder.
+- To start clean: stop the server, then delete both.
+  `rm -rf run.db uploads` (Windows: `del run.db` and `rmdir /s /q uploads`).
+- Students are identified only by the name typed, spelled exactly the same way
+  each time. There is no login: anyone who types the same name sees, and can
+  delete, that student's documents (code).
+- Stop the server with Ctrl+C in its terminal. Ports: 8001 in the command above
+  (any free port works: change `--port` and the address); 8000 in Codespaces. By
+  default the server listens on 127.0.0.1, so only your own machine can reach it.
+
+---
+
+## Troubleshooting
+
+Only things we reproduced, or read directly from the code (marked "code").
+
+| What you see | Cause and fix |
+|---|---|
+| A page that says "The chat UI has not been built" (reproduced) | `web/ui/dist/` is missing from your copy. Re-clone, or run `git checkout -- web/ui/dist`. Meanwhile `/classic/` still works. |
+| Blank page | `web/ui/dist/` is committed and served: `index.html` and its JS and CSS all answered 200 on a fresh clone. Check the address (port) and open the browser's developer console for the error. We could not reproduce a blank page. |
+| `error while attempting to bind on address ('127.0.0.1', 8001): address already in use` (reproduced) | Something is already on that port. Use another: `--port 8002`, and open that address. |
+| "Both models unreachable (Illegal header value b'Bearer ')" (reproduced) | `OPENROUTER_API_KEY` is empty. Put the key in `.env` and **restart the server**: a running server does not re-read `.env` (reproduced). `python scripts/doctor.py` confirms. |
+| A red notice saying `... returned HTTP 401` (code) | The key is wrong or revoked. Fix `.env`, restart the server. |
+| A red notice saying `HTTP 429` (code) | The provider is throttling the free tier. Wait a minute, then **Start a new session**. |
+| A red notice about credit or `402` (code) | OpenRouter refused the request because the key's balance cannot cover it. Use a key with credit, or lower `SLICE_MAX_TOKENS` in `.env` (see the comments in `.env.example`), then restart. `python scripts/doctor.py` reports it. |
+| Lessons very slow | Free-tier models can be slow. The page keeps saying "Writing your next lesson…". Each model call gives up after 120 s and then tries a second model; if both fail you get a red notice and a **Start a new session** button (code). Progress up to the last answer is saved. |
+| An upload is rejected (reproduced) | Only `.md`, `.txt`, `.pdf`, `.docx`; at most 5 MB per file; at most 10 files per student. The page shows the reason, for example `'a.exe': only .docx, .md, .pdf, .txt files can be added.` or `You can keep up to 10 documents. Remove one first.` A broken PDF says `could not be read`. |
+| The first upload (or **Try sample notes**) takes a while, or fails offline | It downloads a 65 MB embedding model once and needs internet. The default cache is your system temp folder (`/tmp/fastembed_cache` on Linux), so a reboot can clear it. Set `FASTEMBED_CACHE_PATH` to keep it. |
+| A session stuck on "Reading your teacher’s notes and preparing your first lesson…" or "Writing your next lesson…" | Normal for up to about 25 s. Longer: the model call is waiting on a slow provider (up to 120 s per call). If the server was restarted mid-lesson, reload the page: it resumes an interrupted session by itself (code, not reproduced). Otherwise click **New session**. |
+| The tutor does not remember you (code) | The name is different (upper and lower case count), or you deleted `run.db`. |
+
+---
+
+## Repo map
+
+What a judge would read:
+
+- [`demo/tutor/`](demo/tutor/): the tutor. `flow.py` (the loop), `learner.py` and
+  `learners.py` (what it remembers), `session.py` (starting, answering),
+  `library.py` (a student's documents), `prompts/` (what the model is told),
+  `stub.py` (the scripted model for offline tests).
+- [`web/tutor_api.py`](web/tutor_api.py): the JSON API behind the page.
+  [`web/student.py`](web/student.py): the server, and the `/classic/` page.
+- [`web/ui/`](web/ui/): the chat page's source (React, Vite, Tailwind, shadcn/ui,
+  assistant-ui). The built files are committed in `web/ui/dist/`.
+- [`tests/`](tests/): 151 tests; `test_tutor*.py` cover the tutor.
+- [`demo/tutor/TUTOR-SPEC.md`](demo/tutor/TUTOR-SPEC.md): the AgentSpec.
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): the kit's design, with links to the
+  lines of code.
+- `slice/`: the kit's spine (runner, store, model call, retrieval). It is the
+  organisers' code; `PRE-EVENT-ASSETS.md` lists the few edits made to it.
+
+---
+
+# Agentic Slice Kit: participant guide
+
+*Everything below is the organisers' guide for participants, kept as it was.*
 
 A starter kit for building a **working agentic slice** in two days.
 
 Not a framework. Not a library. About 1,100 lines you are expected to read,
 understand, and edit — because the architecture is the thing being taught, and
 you cannot learn an architecture you have imported.
-
-> **Status: spine complete, and one worked agent on top of it. 151 tests — 148
-> of them run with no key and no network; the three in
-> `tests/test_integration.py` need a live key and a reachable provider.**
->
-> The worked agent is a tutor in [`demo/tutor/`](demo/tutor/). By default it teaches
-> from the model's own knowledge, shaped by what each student already knows and gets
-> wrong; if a student attaches their own documents and switches them on, it teaches
-> from those instead, and cites them. Its spec
-> is [`demo/tutor/TUTOR-SPEC.md`](demo/tutor/TUTOR-SPEC.md). Try it with
-> `python -m uvicorn web.student:app --port 8001`.
 
 ---
 
