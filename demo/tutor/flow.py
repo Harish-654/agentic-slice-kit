@@ -22,11 +22,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from slice import callback
-from slice.llm import complete
+from slice.llm import SchemaFailure, Truncated, complete
 from slice.records import RunState
 
-from . import learner, learners, library
-from .schema import Grade, LearnerModel, Lesson
+from . import coach, curriculum, learner, learners, library, sandbox, steps
+from .schema import Grade, LearnerModel, Lesson, PlanDraft, Probe
 
 STUDENT_WAIT_MINUTES = 24 * 60
 """A student who steps away for a meal has not abandoned the lesson. The kit's
@@ -35,6 +35,9 @@ default wait is minutes, sized for an expert on call."""
 KIND_QUIZ, KIND_GAP = "student_quiz", "doc_gap"
 
 _PROMPTS = Path(__file__).parent / "prompts"
+FORMATS = {"mcq": "format_mcq", "text": "format_open", "code": "format_code"}
+KINDS = {"mcq": "multiple-choice", "text": "written", "code": "program"}
+PROBE_TRIES = 2                 # a probe whose code will not run gets one retry, then is skipped
 
 
 def _prompt(*names: str) -> str:
@@ -47,8 +50,8 @@ def _notes(chunks) -> str:
 
 def build_teach_messages(concept, style, source, want, profile, misconception,
                          recent: bool = True, notes: str = "") -> list[dict]:
-    """`source` is "general" or "docs"; `want` is "mcq" or "text" (an open question)."""
-    system = _prompt("teach", f"source_{source}", "format_mcq" if want == "mcq" else "format_open")
+    """`source` is "general" or "docs"; `want` is "mcq", "text" (an open question) or "code"."""
+    system = _prompt("teach", f"source_{source}", FORMATS[want])
     user = [f"TOPIC: {concept}", f"STYLE: {style}", "STUDENT PROFILE:\n" + profile]
     if misconception:
         when = "the student just chose" if recent else "this student held in an earlier session on this topic"
@@ -75,10 +78,27 @@ def build_grade_messages(open_q: dict, answer: str, notes: str) -> list[dict]:
             {"role": "user", "content": "\n\n".join(parts)}]
 
 
-def build_flow(call=complete, find=library.search):
+def build_plan_messages(seed: str, is_exam: bool, known: list[str]) -> list[dict]:
+    user = [f"{'EXAM QUESTION' if is_exam else 'TOPIC'}: {seed}",
+            "KNOWN CONCEPTS (reuse these ids when they mean the same thing): " + (", ".join(known) or "none")]
+    return [{"role": "system", "content": _prompt("plan")},
+            {"role": "user", "content": "\n\n".join(user)}]
+
+
+def build_probe_messages(concept: str, profile: str, problem: str | None = None) -> list[dict]:
+    user = f"TOPIC: {concept}\n\nSTUDENT PROFILE:\n{profile}"
+    if problem:
+        user += ("\n\nYOUR PREVIOUS QUESTION WAS REJECTED: when its `code` was run it failed with:\n"
+                 f"{problem}\nWrite a different question whose `code` runs cleanly.")
+    return [{"role": "system", "content": _prompt("probe")},
+            {"role": "user", "content": user}]
+
+
+def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbox.available):
     """`call` and `find` are injected so the whole loop runs offline: no key, no
     network, no embedding model. See demo/tutor/stub.py. `find(store, student,
-    query)` returns the student's own chunks relevant to the query."""
+    query)` returns the student's own chunks relevant to the query. `run` executes
+    a student's program and `ready()` says whether it may (see sandbox.py)."""
 
     def _model(ctx) -> LearnerModel:
         return LearnerModel.model_validate(ctx.latest("learner_model"))
@@ -125,16 +145,98 @@ def build_flow(call=complete, find=library.search):
                      dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
         return RunState.AWAITING_EXPERT
 
+    def _ensure_plan(ctx, model, inp):
+        """Guided runs only. Work out once what the topic builds on, and record it on the run
+        (the `input` gains a `plan` and its concepts become prerequisites then target). A plan
+        the student already has is reused; a failed plan call just means no prerequisites."""
+        if "plan" in inp:
+            return model, inp
+        exam, typed = inp.get("exam_question"), inp["concepts"][0]
+        known = list(model.mastery)
+        plan = None if exam else model.plans.get(curriculum.key(typed))
+        target = typed
+        if plan is None:
+            degraded = False
+            try:
+                draft = call(settings=ctx.settings, budget=ctx.budget,
+                             messages=build_plan_messages(exam or typed, bool(exam), known),
+                             schema=PlanDraft, step="plan", reasoning=False)
+            except (SchemaFailure, Truncated):
+                draft, degraded = PlanDraft(), True
+            if exam:
+                target = (curriculum.resolve(draft.target, known) if draft.target
+                          else learner.slug(" ".join(exam.split()[:4]))) or "exam-question"
+            plan = curriculum.clean_plan(draft, target, known)
+            if not degraded and not exam:               # a topic's plan is the same next time
+                model = model.model_copy(update={"plans": {**model.plans, curriculum.key(typed): plan}})
+                ctx.append("learner_model", model.model_dump(), produced_by="system")
+                learners.save(ctx.store, model)
+            plan = plan | {"degraded": degraded}
+        plan = {"target": target, **plan}
+        inp = {**inp, "concepts": [*plan["prereqs"], target], "plan": plan}
+        ctx.append("input", inp, produced_by="agent:plan")
+        return model, inp
+
+    def _probe(ctx, model, concept) -> RunState | None:
+        """Ask about a prerequisite before explaining it. The question is stored as a lesson with
+        no teaching in it, so the page and the grader treat it like any other check.
+
+        Any code in the question is run in the sandbox first: a question about code that does not
+        run is worse than no question. One retry, with the failure fed back; after that the probe
+        is given up (None) and the prerequisite is simply taught. This check is about quality,
+        not safety, so it is skipped when the sandbox is off rather than blocking the probe."""
+        problem = None
+        for _ in range(PROBE_TRIES):
+            got = call(settings=ctx.settings, budget=ctx.budget,
+                       messages=build_probe_messages(concept, learner.profile(model, concept), problem),
+                       schema=Probe, step="probe", reasoning=False)
+            problem = (coach.question_code_problem(got.quiz.model_dump(), run)
+                       if got.quiz.code and ready()[0] else None)
+            if problem is None:
+                break
+            ctx.append("probe_rejected", {"concept": concept, "problem": problem}, produced_by="system")
+        else:
+            ctx.append("probe_skipped", {"concept": concept}, produced_by="system")
+            return None
+        label = concept.replace("-", " ")
+        ctx.append("lesson", {"covered": True, "citations": [], "diagram": None, "open": None,
+                              "code_task": None, "quiz": got.quiz.model_dump(),
+                              "explanation": f"First, a quick check on **{label}**, which this topic builds on.",
+                              "concept": concept, "style": "probe", "source": "general",
+                              "notes": "", "probe": True}, produced_by="agent:probe")
+        callback.ask(ctx.store, ctx.run_id, got.quiz.question,
+                     {"kind": KIND_QUIZ, "concept": concept, "resume_state": RunState.GATING.value},
+                     dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
+        return RunState.AWAITING_EXPERT
+
     def handle_drafting(ctx) -> RunState:
         model = _model(ctx)
         inp = ctx.latest("input")
-        skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
+        action = "teach"
 
-        concept = learner.pick_concept(model, [c for c in inp["concepts"] if c not in skipped])
-        if concept is None:
-            return _end(ctx, "skipped" if skipped else "mastery")
-        if len(ctx.history("check")) >= learner.MAX_CHECKS:
-            return _end(ctx, "session_limit")
+        if inp.get("mode") == "guided":
+            model, inp = _ensure_plan(ctx, model, inp)
+            skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
+            checks = [c.payload for c in ctx.history("check")]
+            action, concept = steps.decide(
+                inp["concepts"], model, checks, skipped, probing=not model.use_docs,
+                unprobed={v.payload["concept"] for v in ctx.history("probe_skipped")})
+            if action == "done":
+                return _end(ctx, concept)
+            if len(checks) >= steps.MAX_CHECKS:
+                return _end(ctx, "session_limit")
+            if action == "probe":
+                asked = _probe(ctx, model, concept)
+                if asked is not None:
+                    return asked
+                # no trustworthy probe could be made: teach the prerequisite instead
+        else:
+            skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
+            concept = learner.pick_concept(model, [c for c in inp["concepts"] if c not in skipped])
+            if concept is None:
+                return _end(ctx, "skipped" if skipped else "mastery")
+            if len(ctx.history("check")) >= learner.MAX_CHECKS:
+                return _end(ctx, "session_limit")
 
         source, chunks = "general", []
         if model.use_docs and _gap(ctx, concept) != "general":
@@ -156,10 +258,9 @@ def build_flow(call=complete, find=library.search):
 
         if source == "docs" and not lesson.covered:
             return _doc_gap(ctx, concept)
-        if (lesson.quiz is None) == (want == "mcq"):        # asked for one type, got the other
+        if lesson.kind != want:                             # asked for one type, got another
             return _fail(ctx, "wrong_question_type",
-                         f"Asked for a {'multiple-choice' if want == 'mcq' else 'written'} "
-                         "question and the model wrote the other kind.")
+                         f"Asked for a {KINDS[want]} question and the model wrote the other kind.")
 
         allowed = {c.cite() for c in chunks}
         cited = [c for c in lesson.citations if c in allowed] if source == "docs" else []
@@ -171,7 +272,7 @@ def build_flow(call=complete, find=library.search):
         ctx.append("lesson", payload, produced_by="agent:teach")
 
         # Suspend on the student. Waiting is a state, not this process's job.
-        callback.ask(ctx.store, ctx.run_id, (lesson.quiz or lesson.open).question,
+        callback.ask(ctx.store, ctx.run_id, (lesson.quiz or lesson.open or lesson.code_task).question,
                      {"kind": KIND_QUIZ, "concept": concept,
                       "resume_state": RunState.GATING.value},
                      dataclasses.replace(ctx.settings,
@@ -189,11 +290,22 @@ def build_flow(call=complete, find=library.search):
         unknown = given["mode"] == "dont_know"
         confidence = given.get("confidence")
 
+        task = lesson.get("code_task")
         if unknown:                  # no grading call: nothing was said to grade
             correct, mis = False, None
-            stem = (lesson["quiz"] or lesson["open"])["question"]
-            teach = lesson["quiz"]["why"] if lesson["quiz"] else "A good answer: " + lesson["open"]["model_answer"]
+            stem = (lesson["quiz"] or lesson["open"] or task)["question"]
+            teach = (lesson["quiz"]["why"] if lesson["quiz"]
+                     else "A working solution:\n" + task["model_solution"] if task
+                     else "A good answer: " + lesson["open"]["model_answer"])
             feedback = "That is fine, not knowing is useful to know. " + teach
+        elif task:                   # a program: run it against the hidden tests, no model call
+            ok, why = ready()
+            if not ok:
+                return _fail(ctx, "sandbox_unavailable", "Running code is switched off here. " + why)
+            g = coach.grade_program(task, given["code"], run)
+            correct, mis, feedback, stem = g.correct, g.misconception, g.feedback, task["question"]
+            if correct and given.get("assisted"):
+                confidence = "low"   # a suggestion did part of the work, so the win counts for less
         elif lesson["quiz"]:
             quiz = lesson["quiz"]
             chosen = quiz["options"][given["choice"]]
@@ -210,7 +322,8 @@ def build_flow(call=complete, find=library.search):
                                     confidence=confidence, dont_know=unknown)
         ctx.append("check", {"concept": concept, "mode": given["mode"], "correct": correct,
                              "misconception": learner.slug(mis), "feedback": feedback,
-                             "confidence": confidence, "dont_know": unknown},
+                             "confidence": confidence, "dont_know": unknown}
+                   | ({"probe": True} if lesson.get("probe") else {}),
                    produced_by="agent:gate" if given["mode"] == "text" else "system")
         ctx.append("learner_model", model.model_dump(), produced_by="system")
         learners.save(ctx.store, model)

@@ -30,6 +30,7 @@ model answer under `quiz`.
   "citations": ["note-id-you-used"],
   "diagram": null,
   "quiz": null,
+  "code_task": null,
   "open": {
     "question": "one self-contained question",
     "code": null,

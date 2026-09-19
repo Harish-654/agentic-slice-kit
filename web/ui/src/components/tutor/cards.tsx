@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { humanize, STYLE_LABEL } from '@/lib/format'
-import type { Answered, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
+import type { Answered, CodeTaskQ, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
+import { CodeEditor } from './CodeEditor'
 import { useTutor } from './context'
 
 /** Concept, how it is being taught, and where the facts came from. The source is always
@@ -233,6 +234,46 @@ export const OpenQuestionCard: ToolCallMessagePartComponent = ({ args }) => {
   )
 }
 
+/** A question answered by writing a program. Run is free and ungraded; Submit runs it against
+ * hidden tests and tells the tutor which idea a failing test points at. */
+export const CodeTaskCard: ToolCallMessagePartComponent = ({ args }) => {
+  const { task } = args as { task: CodeTaskQ }
+  const { canAnswer, confidence, submitCode } = useTutor()
+  const [code, setCode] = useState(task.starter)
+  const [assisted, setAssisted] = useState(false)
+  const open = !task.answered && canAnswer
+  return (
+    <Card className="mt-4 gap-3 py-4">
+      <CardContent className="px-4">
+        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Write a program</p>
+        <p className="font-medium leading-snug">{task.question}</p>
+        {open ? (
+          <div className="mt-3">
+            <CodeEditor code={code} setCode={setCode} assisted={assisted} setAssisted={setAssisted}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!confidence || !code.trim()}
+                onClick={() => submitCode(code, assisted)}
+              >
+                Submit program
+              </Button>
+            </CodeEditor>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Run as often as you like. Say how sure you are to unlock Submit.
+            </p>
+            <AnswerActions withSubmit={false} />
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {task.answered?.dont_know ? 'You said you did not know.' : task.answered ? 'You submitted a program.' : null}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 const SURE: Record<Confidence, string> = { low: 'just guessing', medium: 'fairly sure', high: 'certain' }
 
 /** Right or wrong, why, and what how sure they were says about it. Being certain and wrong is
@@ -242,7 +283,7 @@ export const FeedbackCard: ToolCallMessagePartComponent = ({ args }) => {
     correct: boolean
     text: string
     misconception: string | null
-    via: 'mcq' | 'text'
+    via: 'mcq' | 'text' | 'code'
     confidence: Confidence | null
     dont_know: boolean
   }
@@ -272,7 +313,11 @@ export const FeedbackCard: ToolCallMessagePartComponent = ({ args }) => {
         <p className="mt-0.5">{text}</p>
         {!correct && !dont_know && misconception ? (
           <p className="mt-2 text-muted-foreground">
-            {via === 'text' ? 'Your answer points to the idea:' : 'That option rests on the idea:'}{' '}
+            {via === 'text'
+              ? 'Your answer points to the idea:'
+              : via === 'code'
+                ? 'Your program points to the idea:'
+                : 'That option rests on the idea:'}{' '}
             <span className="font-medium text-foreground">{humanize(misconception)}</span>
           </p>
         ) : null}

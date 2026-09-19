@@ -2,6 +2,7 @@ import { useCallback, useState, type FC } from 'react'
 import { ChevronDownIcon, GraduationCapIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { CodeCoach } from '@/components/tutor/CodeCoach'
 import { ProgressPanel } from '@/components/tutor/ProgressPanel'
 import { StartScreen } from '@/components/tutor/StartScreen'
 import { Thread } from '@/components/tutor/Thread'
@@ -52,6 +53,7 @@ const Session: FC<{ onRestart: () => void }> = ({ onRestart }) => {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <ProgressPanel progress={snap.progress} student={snap.student} />
+          <CodeCoach />
         </CollapsibleContent>
       </Collapsible>
 
@@ -61,6 +63,7 @@ const Session: FC<{ onRestart: () => void }> = ({ onRestart }) => {
         </main>
         <aside className="hidden w-80 shrink-0 overflow-y-auto border-l bg-muted/20 lg:block">
           <ProgressPanel progress={snap.progress} student={snap.student} />
+          <CodeCoach />
         </aside>
       </div>
     </div>

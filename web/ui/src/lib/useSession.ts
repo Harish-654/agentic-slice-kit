@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Confidence, type Snapshot } from './api'
+import { api, type AnswerMode, type Confidence, type Snapshot } from './api'
 
 const POLL_MS = 1000
 // A stalled run is resumed rather than watched; waiting on the student needs no polling.
@@ -66,8 +66,10 @@ export function useSession(id: string | null) {
     error,
     answerChoice: (choice: number, c: Confidence) => (id ? run(api.answerChoice(id, choice, c)) : undefined),
     answerText: (text: string, c: Confidence) => (id ? run(api.answerText(id, text, c)) : undefined),
+    answerCode: (code: string, c: Confidence, assisted: boolean) =>
+      id ? run(api.answerCode(id, code, c, assisted)) : undefined,
     dontKnow: () => (id ? run(api.dontKnow(id)) : undefined),
-    setMode: (mode: 'mcq' | 'text') => (id ? run(api.setMode(id, mode)) : undefined),
+    setMode: (mode: AnswerMode) => (id ? run(api.setMode(id, mode)) : undefined),
     setSource: (on: boolean) => (id ? run(api.setSource(id, on)) : undefined),
     fallback: (choice: 'general' | 'skip') => (id ? run(api.fallback(id, choice)) : undefined),
     refresh,

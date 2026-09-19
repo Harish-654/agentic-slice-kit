@@ -5,8 +5,9 @@ import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
+import { CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
 import type { LessonMsg } from '@/lib/api'
+import { useCodeStatus } from '@/lib/useCodeStatus'
 import { useTutor } from './context'
 
 const TOOLS = {
@@ -15,6 +16,7 @@ const TOOLS = {
     diagram: DiagramView,
     quiz: QuizCard,
     open_question: OpenQuestionCard,
+    code_task: CodeTaskCard,
     feedback: FeedbackCard,
     end: EndCard,
     notice: NoticeCard,
@@ -94,6 +96,8 @@ const Footer: FC = () => {
   const lesson = snap.messages.findLast((m): m is LessonMsg => m.kind === 'lesson')
   const writing = canAnswer && lesson?.open != null
   const nextWritten = snap.progress.answer_mode === 'text'
+  const nextProgram = snap.progress.answer_mode === 'code'
+  const code = useCodeStatus()
   return (
     <div className="flex flex-col gap-3">
       {writing ? <TextAnswer /> : null}
@@ -105,6 +109,9 @@ const Footer: FC = () => {
       {canAnswer && !writing && nextWritten ? (
         <p className="text-center text-xs text-muted-foreground">Your next question will be in your own words.</p>
       ) : null}
+      {canAnswer && nextProgram ? (
+        <p className="text-center text-xs text-muted-foreground">Your next question will be a program to write.</p>
+      ) : null}
       <div className="flex items-center justify-end gap-2">
         <Label htmlFor="own-words" className="text-sm font-normal text-muted-foreground">
           Ask my next questions in my own words
@@ -114,6 +121,17 @@ const Footer: FC = () => {
           checked={nextWritten}
           disabled={!canAnswer}
           onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')}
+        />
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <Label htmlFor="program-mode" className="text-sm font-normal text-muted-foreground">
+          {code && !code.available ? 'Programs need the code sandbox (switched off here)' : 'Ask my next question as a program to write'}
+        </Label>
+        <Switch
+          id="program-mode"
+          checked={nextProgram}
+          disabled={!canAnswer || !code?.available}
+          onCheckedChange={(on) => setMode(on ? 'code' : 'mcq')}
         />
       </div>
     </div>

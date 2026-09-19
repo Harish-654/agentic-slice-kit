@@ -68,6 +68,24 @@ class OpenQuestion(BaseModel):
         return self
 
 
+class CodeTest(BaseModel):
+    """One hidden check on a submitted program. `belief` names the wrong idea a
+    failure of THIS test exposes, so failing it is a diagnosis, like a tagged
+    distractor."""
+    call: str                   # a Python expression using the student's code, e.g. add(2, 3)
+    expected: str               # repr() of the right result
+    belief: str
+
+
+class CodeTask(BaseModel):
+    """A question answered by writing a program. Only `question` and `starter` reach
+    the browser; the tests and the solution stay on the server."""
+    question: str
+    starter: str = ""
+    tests: list[CodeTest] = Field(min_length=1, max_length=6)
+    model_solution: str
+
+
 class Lesson(BaseModel):
     covered: bool = True        # documents mode: the notes really cover the topic
     explanation: str
@@ -75,12 +93,17 @@ class Lesson(BaseModel):
     diagram: str | None = None  # Mermaid source, rendered by the page
     quiz: Quiz | None = None    # exactly one of these two, matching the mode asked for
     open: OpenQuestion | None = None
+    code_task: CodeTask | None = None
 
     @model_validator(mode="after")
     def _one_check(self):
-        if (self.quiz is None) == (self.open is None):
-            raise ValueError("give exactly one of `quiz` and `open`")
+        if sum(x is not None for x in (self.quiz, self.open, self.code_task)) != 1:
+            raise ValueError("give exactly one of `quiz`, `open` and `code_task`")
         return self
+
+    @property
+    def kind(self) -> str:
+        return "mcq" if self.quiz else "text" if self.open else "code"
 
 
 class Grade(BaseModel):
@@ -91,7 +114,21 @@ class Grade(BaseModel):
     feedback: str
 
 
-AnswerMode = Literal["mcq", "text"]
+class PlanDraft(BaseModel):
+    """What a topic builds on and what it contains. Ids only, kebab-case: labels are derived
+    in code, so a small model has almost nothing to get wrong. Every field is lenient;
+    curriculum.clean_plan truncates and canonicalises."""
+    target: str = ""            # used only for a pasted exam question: the topic it tests
+    prereqs: list[str] = []
+    subtopics: list[str] = []
+
+
+class Probe(BaseModel):
+    """A bare check on a prerequisite, asked BEFORE anything is explained."""
+    quiz: Quiz
+
+
+AnswerMode = Literal["mcq", "text", "code"]
 
 
 class LearnerModel(BaseModel):
@@ -108,3 +145,4 @@ class LearnerModel(BaseModel):
     answer_mode: AnswerMode = "mcq"
     use_docs: bool = False                  # teach from the student's own documents
     recent_questions: dict[str, list[str]] = {}   # concept -> last few stems, so none repeat
+    plans: dict[str, dict] = {}             # curriculum.key(topic) -> {"prereqs": [...], "subtopics": [...]}

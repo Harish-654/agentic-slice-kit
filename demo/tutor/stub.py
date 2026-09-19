@@ -38,6 +38,37 @@ def open_lesson(text: str, *, cites=(CITE,), covered: bool = True) -> str:
     })
 
 
+def code_lesson(text: str, *, cites=(CITE,), covered: bool = True) -> str:
+    """The same topic asked as a program. Tests: total([1, 2, 3]) == 6 exposes
+    forgets-to-accumulate, total([]) == 0 exposes empty-input-not-handled."""
+    return json.dumps({
+        "covered": covered, "explanation": text, "citations": list(cites), "diagram": None,
+        "quiz": None, "open": None,
+        "code_task": {"question": "Write total(prices) that returns the sum of the list.",
+                      "starter": "def total(prices):\n    pass",
+                      "tests": [{"call": "total([1, 2, 3])", "expected": "6", "belief": "forgets-to-accumulate"},
+                                {"call": "total([])", "expected": "0", "belief": "empty-input-not-handled"}],
+                      "model_solution": "def total(prices):\n    return sum(prices)"},
+    })
+
+
+def plan(prereqs=("classes-and-objects",), subtopics=("overriding",), target="") -> str:
+    """A PlanDraft: what the topic builds on, and its parts."""
+    return json.dumps({"target": target, "prereqs": list(prereqs), "subtopics": list(subtopics)})
+
+
+def probe(code: str | None = None, options=None) -> str:
+    """A bare check on a prerequisite. Same option layout as lesson(): 1 is right. `code` is the
+    program shown with the question; `options` overrides the three option texts."""
+    a, b, c = options or ("one object only", "the shape shared by its objects", "a module")
+    return json.dumps({"quiz": {
+        "question": "What does a class describe?", "code": code,
+        "options": [{"text": a, "misconception": "class-is-an-instance"},
+                    {"text": b},
+                    {"text": c, "misconception": "class-is-a-module"}],
+        "correct": 1, "why": "A class is the blueprint its objects share."}})
+
+
 def grade(correct: bool, misconception: str | None, feedback: str = "ok") -> str:
     return json.dumps({"correct": correct, "misconception": misconception, "feedback": feedback})
 

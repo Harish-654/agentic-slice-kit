@@ -149,7 +149,12 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
           return (
             <div key={c.concept} className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{humanize(c.concept)}</span>
+                <span className="text-sm font-medium">
+                  {humanize(c.concept)}
+                  {progress.plan?.prereqs.includes(c.concept) ? (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">prerequisite</span>
+                  ) : null}
+                </span>
                 <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', s.tone)}>
                   {c.review_due ? <RefreshCwIcon className="size-3" /> : null}
                   {s.label}

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Confidence, Snapshot } from '@/lib/api'
+import type { AnswerMode, Confidence, Snapshot } from '@/lib/api'
 
 export type TutorApi = {
   snap: Snapshot
@@ -15,7 +15,9 @@ export type TutorApi = {
   /** "I don't know": honest, never graded. */
   dontKnow: () => void
   /** The type of the NEXT question; the one on screen is left alone. */
-  setMode: (mode: 'mcq' | 'text') => void
+  setMode: (mode: AnswerMode) => void
+  /** Hand in a program for a code question. `assisted`: a suggestion chip helped write it. */
+  submitCode: (code: string, assisted: boolean) => void
   setSource: (useDocs: boolean) => void
   /** The answer to "that topic is not in your documents". */
   fallback: (choice: 'general' | 'skip') => void
@@ -24,6 +26,8 @@ export type TutorApi = {
   addSample: () => Promise<void>
   removeDoc: (name: string) => Promise<void>
   restart: () => void
+  /** Re-read the session, e.g. after the code coach changed the learner model. */
+  refresh: () => Promise<void>
 }
 
 export const TutorContext = createContext<TutorApi | null>(null)

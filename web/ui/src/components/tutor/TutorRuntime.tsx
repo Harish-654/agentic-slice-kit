@@ -35,7 +35,9 @@ function convertMessage(m: Msg): ThreadMessageLike {
           ...(m.diagram ? [call('diagram', { source: m.diagram }, true)] : []),
           m.quiz
             ? call('quiz', { quiz: m.quiz }, m.quiz.answered ?? undefined)
-            : call('open_question', { open: m.open }, m.open?.answered ?? undefined),
+            : m.code_task
+              ? call('code_task', { task: m.code_task }, m.code_task.answered ?? undefined)
+              : call('open_question', { open: m.open }, m.open?.answered ?? undefined),
         ],
       }
     case 'answer':
@@ -83,7 +85,7 @@ export function TutorRuntime({
   onRestart: () => void
   children: (ready: boolean) => ReactNode
 }) {
-  const { snap, error, answerChoice, answerText, dontKnow, setMode, setSource, fallback, refresh } =
+  const { snap, error, answerChoice, answerText, answerCode, dontKnow, setMode, setSource, fallback, refresh } =
     useSession(sessionId)
   const status = snap?.status
   const canAnswer = status === 'waiting_student'
@@ -138,6 +140,9 @@ export function TutorRuntime({
               if (cur.picked !== null && cur.confidence) void answerChoice(cur.picked, cur.confidence)
             },
             dontKnow: () => void dontKnow(),
+            submitCode: (code, assisted) => {
+              if (cur.confidence) void answerCode(code, cur.confidence, assisted)
+            },
             setMode,
             setSource,
             fallback,
@@ -145,6 +150,7 @@ export function TutorRuntime({
             addSample: () => docs(() => api.sample(student)),
             removeDoc: (name) => docs(() => api.removeDoc(student, name)),
             restart: onRestart,
+            refresh,
           }
         : null,
     // The actions close over the session id only; the snapshot is what changes.

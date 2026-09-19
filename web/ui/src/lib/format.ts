@@ -10,4 +10,5 @@ export const STYLE_LABEL: Record<string, string> = {
   analogy: 'By analogy',
   worked_example: 'Worked example',
   diagram: 'With a diagram',
+  probe: 'Quick check',
 }

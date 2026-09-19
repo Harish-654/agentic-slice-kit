@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { ApiError, api } from '@/lib/api'
 
 const split = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
@@ -20,11 +21,17 @@ export const StartScreen: FC<{
   const [sample, setSample] = useState(false)
   const [existing, setExisting] = useState<string[]>([]) // documents this name already has
   const [useDocs, setUseDocs] = useState(false)
+  const [guided, setGuided] = useState(false)
+  const [exam, setExam] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pick = useRef<HTMLInputElement>(null)
 
   const haveDocs = files.length > 0 || sample || existing.length > 0
+  // Guided mode takes one topic, or a pasted exam question that names its own topic.
+  const examText = exam.trim()
+  const topicList = split(topics)
+  const ready = !!name.trim() && (guided ? topicList.length === 1 || (topicList.length === 0 && !!examText) : topicList.length > 0)
 
   // A returning student may already have documents on the server.
   const lookUp = () => {
@@ -36,13 +43,20 @@ export const StartScreen: FC<{
   async function submit(e: FormEvent) {
     e.preventDefault()
     const who = name.trim()
-    if (!who || split(topics).length === 0) return
+    if (!ready) return
     setBusy(true)
     setError(null)
     try {
       if (files.length) await api.upload(who, files)
       if (sample) await api.sample(who)
-      const { id } = await api.start(who, split(topics), split(interests), useDocs && haveDocs)
+      const { id } = await api.start(
+        who,
+        topicList,
+        split(interests),
+        useDocs && haveDocs,
+        guided ? 'guided' : 'quick',
+        guided && examText ? examText : null,
+      )
       onStarted(id, who)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start a session.')
@@ -83,12 +97,41 @@ export const StartScreen: FC<{
                 id="topics"
                 value={topics}
                 onChange={(e) => setTopics(e.target.value)}
-                placeholder="e.g. recursion, list slicing, how decorators work"
-                required
+                placeholder={guided ? 'e.g. inheritance' : 'e.g. recursion, list slicing, how decorators work'}
+                required={!guided || !examText}
               />
               <p className="text-xs text-muted-foreground">
-                Anything you like, separated by commas. Questions are made for you, based on what you already know.
+                {guided
+                  ? 'One topic. Or leave this empty and paste an exam question below.'
+                  : 'Anything you like, separated by commas. Questions are made for you, based on what you already know.'}
               </p>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-3">
+                <Label htmlFor="guided" className="flex-col items-start gap-0.5 text-sm font-medium leading-snug">
+                  Check what it builds on first
+                  <span className="text-xs font-normal text-muted-foreground">
+                    Guided: it asks about the ideas this topic needs, and only explains the ones you miss.
+                  </span>
+                </Label>
+                <Switch id="guided" checked={guided} onCheckedChange={setGuided} />
+              </div>
+              {guided ? (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="exam" className="text-sm font-normal">
+                    An exam question to work towards <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="exam"
+                    value={exam}
+                    onChange={(e) => setExam(e.target.value)}
+                    placeholder="Paste it here. The tutor works out which topic it tests."
+                    rows={3}
+                    maxLength={2000}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 rounded-lg border p-3">
@@ -175,7 +218,7 @@ export const StartScreen: FC<{
             </div>
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" disabled={busy || !name.trim() || split(topics).length === 0} size="lg">
+            <Button type="submit" disabled={busy || !ready} size="lg">
               {busy ? <Loader2Icon className="size-4 animate-spin" /> : null}
               Start learning
             </Button>

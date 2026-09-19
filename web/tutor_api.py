@@ -25,10 +25,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from demo.tutor import learner, library, session
+from demo.tutor import coach, learner, learners, library, sandbox, session
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
+from slice.budget import Budget
+from slice.llm import complete
 from slice.config import settings
 from slice.records import RunState
 from slice.store import Store
@@ -39,6 +41,8 @@ router = APIRouter(prefix="/api")
 DB = "run.db"
 flow_factory = build_flow
 get_settings = settings
+sandbox_run, sandbox_ready = sandbox.run, sandbox.available     # overridable in tests
+suggest_call = complete                                          # overridable in tests
 
 _running: set[str] = set()
 _lock = threading.Lock()
@@ -113,12 +117,15 @@ def _lesson_message(v) -> dict:
            # Stored as <student>__<file>#n; the student only ever knows their own file name.
            "citations": [c.split("__", 1)[-1] for c in p["citations"]],
            "explanation": p["explanation"],
-           "diagram": p.get("diagram"), "quiz": None, "open": None}
+           "diagram": p.get("diagram"), "quiz": None, "open": None, "code_task": None}
     if p["quiz"]:
         q = p["quiz"]
         msg["quiz"] = {"question": q["question"], "code": q.get("code"),
                        "options": [{"text": o["text"]} for o in q["options"]],   # no answer key
                        "answered": None}
+    elif p.get("code_task"):
+        t = p["code_task"]                     # the tests, beliefs and solution stay on the server
+        msg["code_task"] = {"question": t["question"], "starter": t["starter"], "answered": None}
     else:
         o = p["open"]
         msg["open"] = {"question": o["question"], "code": o.get("code"), "answered": None}
@@ -142,7 +149,7 @@ def _messages(versions) -> list[dict]:
             reply = json.loads(p["answer"])
         elif v.kind == "check" and lesson_payload and lesson_msg:
             given = reply or {}
-            card = lesson_msg["quiz"] or lesson_msg["open"]
+            card = lesson_msg["quiz"] or lesson_msg["open"] or lesson_msg["code_task"]
             key = lesson_payload["quiz"]["correct"] if lesson_payload["quiz"] else None
             if given.get("mode") == "dont_know":
                 said = "I don't know"
@@ -154,6 +161,9 @@ def _messages(versions) -> list[dict]:
                 card["answered"] = {"chosen": given["choice"],
                                     "correct_index": lesson_payload["quiz"]["correct"],
                                     "correct": p["correct"]}
+            elif given.get("mode") == "code":
+                said = given.get("code", "")
+                card["answered"] = {"chosen": None, "correct_index": None, "correct": p["correct"]}
             else:
                 said = given.get("text", "")
                 card["answered"] = {"chosen": None, "correct_index": None, "correct": p["correct"]}
@@ -161,7 +171,7 @@ def _messages(versions) -> list[dict]:
             out.append({"id": f"{v.seq}-feedback", "role": "assistant", "kind": "feedback",
                         "correct": p["correct"], "text": p["feedback"],
                         "misconception": p.get("misconception"),
-                        "via": "mcq" if lesson_payload["quiz"] else "text",
+                        "via": "mcq" if lesson_payload["quiz"] else "code" if lesson_payload.get("code_task") else "text",
                         "confidence": p.get("confidence"), "dont_know": p.get("dont_know", False)})
             lesson_msg = lesson_payload = reply = None
         elif v.kind == "session_end":
@@ -180,7 +190,9 @@ def _messages(versions) -> list[dict]:
 
 def _progress(s: Store, run_id: str) -> dict:
     model = LearnerModel.model_validate(s.latest(run_id, "learner_model"))
-    concepts = s.latest(run_id, "input")["concepts"]
+    inp = s.latest(run_id, "input")
+    concepts = inp["concepts"]
+    plan = inp.get("plan")
     rows = []
     for c in concepts:
         eff = learner.effective_mastery(model, c)
@@ -195,7 +207,8 @@ def _progress(s: Store, run_id: str) -> dict:
             "beliefs": sorted(model.concept_misconceptions.get(c, {}).items(),
                               key=lambda kv: -kv[1]),
         })
-    return {"concepts": rows, "threshold": learner.MASTERY,
+    return {"concepts": rows, "threshold": learner.MASTERY, "mode": inp.get("mode", "quick"),
+            "plan": {"target": plan["target"], "prereqs": plan["prereqs"]} if plan else None,
             "answer_mode": model.answer_mode, "interests": model.interests,
             "use_docs": model.use_docs, "docs": library.docs(s.meta(run_id)["student_id"])}
 
@@ -214,14 +227,19 @@ def snapshot(s: Store, run_id: str) -> dict:
 
 class StartRequest(BaseModel):
     student: str = Field(min_length=1, max_length=60)
-    concepts: list[str] = Field(min_length=1, max_length=12)
+    concepts: list[str] = Field(default=[], max_length=12)
     interests: list[str] = []
     use_docs: bool = False
+    # "guided" checks what the topic builds on before teaching it. "quick" is the original loop.
+    mode: Literal["quick", "guided"] = "quick"
+    exam_question: str | None = Field(default=None, max_length=2000)
 
 
 class AnswerRequest(BaseModel):
     choice: int | None = None
     text: str | None = Field(default=None, max_length=4000)
+    code: str | None = Field(default=None, max_length=8000)     # a program, for a code question
+    assisted: bool = False                                      # a suggestion chip helped write it
     # How sure the student is. It changes how far the answer moves their mastery.
     confidence: Literal["low", "medium", "high"] | None = None
     dont_know: bool = False
@@ -247,12 +265,21 @@ def _need_docs(student: str, on: bool) -> None:
 @router.post("/sessions")
 def start(req: StartRequest, s: Store = Depends(get_store)):
     concepts = [c.strip() for c in req.concepts if c.strip()]
+    exam = (req.exam_question or "").strip() or None
+    if exam and req.mode != "guided":
+        raise HTTPException(422, "An exam question needs guided mode.")
+    if req.mode == "guided":
+        if len(concepts) > 1:
+            raise HTTPException(422, "Guided mode takes one topic at a time.")
+        if not concepts and exam:
+            concepts = ["exam-question"]       # replaced by the topic the plan finds in the question
     if not concepts:
         raise HTTPException(422, "Say what you want to learn.")
     student = req.student.strip()
     _need_docs(student, req.use_docs)
     interests = [i.strip() for i in req.interests if i.strip()] or None
-    run = session.start_session(s, student, concepts, interests, use_docs=req.use_docs)
+    run = session.start_session(s, student, concepts, interests, use_docs=req.use_docs,
+                                mode=req.mode, exam_question=exam)
     _kick(run)
     return {"id": run}
 
@@ -280,8 +307,11 @@ def answer(run_id: str, req: AnswerRequest, s: Store = Depends(get_store)):
         session.submit_mcq(s, q.id, req.choice, req.confidence)
     elif typed and lesson["open"]:
         session.submit_text(s, q.id, typed, req.confidence)
+    elif (req.code or "").strip() and lesson.get("code_task"):
+        session.submit_code(s, q.id, req.code, req.confidence, req.assisted)
     else:
-        raise HTTPException(422, "Choose an option." if lesson["quiz"] else "Write your answer.")
+        raise HTTPException(422, "Choose an option." if lesson["quiz"]
+                            else "Write your program." if lesson.get("code_task") else "Write your answer.")
     _kick(run_id)
     return snapshot(s, run_id)
 
@@ -297,8 +327,12 @@ def _toggle(run_id: str, s: Store, apply) -> dict:
 @router.post("/sessions/{run_id}/mode")
 def mode(run_id: str, req: ModeRequest, s: Store = Depends(get_store)):
     """The type of the NEXT question. The one on screen stays as it is."""
-    if req.mode not in ("mcq", "text"):
-        raise HTTPException(422, "mode must be 'mcq' or 'text'.")
+    if req.mode not in ("mcq", "text", "code"):
+        raise HTTPException(422, "mode must be 'mcq', 'text' or 'code'.")
+    if req.mode == "code":
+        ok, why = sandbox_ready()
+        if not ok:
+            raise HTTPException(422, "Program questions need the code sandbox. " + why)
     return _toggle(run_id, s, lambda: session.set_answer_mode(s, run_id, req.mode))
 
 
@@ -322,6 +356,87 @@ def fallback(run_id: str, req: GapRequest, s: Store = Depends(get_store)):
     session.submit_gap(s, gap.id, req.choice)
     _kick(run_id)
     return snapshot(s, run_id)
+
+
+class CodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=8000)
+    concept: str | None = None                       # defaults to the topic of the latest lesson
+    expected: str | None = Field(default=None, max_length=2000)   # what a correct run prints
+    assisted: bool = False          # a suggestion chip helped, so a match proves nothing
+
+
+@router.get("/code/status")
+def code_status():
+    """Whether code can run at all here. False until the isolation self-test passes."""
+    ok, why = sandbox_ready()
+    return {"available": ok, "reason": why}
+
+
+def _coach_concept(s: Store, run_id: str, asked: str | None) -> str:
+    """The topic a piece of code is about: the one asked for, else the latest lesson's."""
+    concepts = s.latest(run_id, "input")["concepts"]
+    lesson = s.latest(run_id, "lesson")
+    concept = asked or (lesson["concept"] if lesson else concepts[0])
+    if concept not in concepts:
+        raise HTTPException(422, "That topic is not part of this session.")
+    return concept
+
+
+class SuggestRequest(BaseModel):
+    code: str = Field(max_length=8000)
+    concept: str | None = None
+
+
+@router.post("/sessions/{run_id}/suggest")
+def suggest(run_id: str, req: SuggestRequest, s: Store = Depends(get_store)):
+    """Suggestion chips while the student types. The twin decides whether to help: a topic
+    the student has not mastered gets no chips and no model call."""
+    snapshot(s, run_id)
+    if is_running(run_id):
+        raise HTTPException(409, "Wait for the next lesson.")
+    concept = _coach_concept(s, run_id, req.concept)
+    model = LearnerModel.model_validate(s.latest(run_id, "learner_model"))
+    if coach.help_level(model, concept) == "withhold" or not req.code.strip():
+        return {"enabled": False, "reason": "Try it yourself first: suggestions unlock when this topic is solid.",
+                "suggestions": []}
+    level = learner.level_for(learner.effective_mastery(model, concept))
+    chips = coach.suggest(suggest_call, get_settings(), Budget(s, run_id, get_settings()),
+                          concept, level, req.code)
+    return {"enabled": True, "reason": "You know this topic well, so suggestions are on.",
+            "suggestions": chips}
+
+
+@router.post("/sessions/{run_id}/code")
+def run_code(run_id: str, req: CodeRequest, s: Store = Depends(get_store)):
+    """The editor coach: run the student's code in the sandbox and turn the outcome into
+    evidence on the same learner model the quizzes feed. Nothing about the tutoring
+    loop changes; this only appends a `code_run` record and, when the run proves
+    something, a new `learner_model`."""
+    snapshot(s, run_id)
+    ok, why = sandbox_ready()
+    if not ok:
+        raise HTTPException(503, "Running code is switched off here. " + why)
+    if is_running(run_id):
+        raise HTTPException(409, "Wait for the next lesson before running code.")
+    concept = _coach_concept(s, run_id, req.concept)
+
+    res = sandbox_run(req.code)
+    correct, tag = coach.evidence(res, req.expected)
+    if req.assisted and correct:
+        correct = None
+    s.append(run_id, "code_run", {"concept": concept, "code": req.code, "expected": req.expected,
+                                  "stdout": res.stdout, "stderr": res.stderr, "exit_code": res.exit_code,
+                                  "timed_out": res.timed_out, "correct": correct, "misconception": tag},
+             "student")
+    if correct is not None:
+        # Read the model only now: an answer may have landed while the code ran.
+        model = learner.apply_check(LearnerModel.model_validate(s.latest(run_id, "learner_model")),
+                                    concept, correct, tag)
+        s.append(run_id, "learner_model", model.model_dump(), "system")
+        learners.save(s, model)
+    return {"stdout": res.stdout, "stderr": res.stderr, "exit_code": res.exit_code,
+            "timed_out": res.timed_out, "correct": correct, "misconception": tag,
+            "hint": coach.hint(res, correct), "progress": _progress(s, run_id)}
 
 
 @router.post("/sessions/{run_id}/resume")

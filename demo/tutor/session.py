@@ -31,14 +31,18 @@ def previous_model(store: Store, student_id: str) -> LearnerModel | None:
 
 
 def start_session(store: Store, student_id: str, concepts: list[str],
-                  interests: list[str] | None = None, use_docs: bool | None = None) -> str:
+                  interests: list[str] | None = None, use_docs: bool | None = None,
+                  mode: str = "quick", exam_question: str | None = None) -> str:
     model = previous_model(store, student_id) or LearnerModel(student_id=student_id)
     if interests is not None:
         model = model.model_copy(update={"interests": interests})
     if use_docs is not None:
         model = model.model_copy(update={"use_docs": use_docs})
     run = store.create_run(DOMAIN, {"student_id": student_id})
-    store.append(run, "input", {"student_id": student_id, "concepts": concepts}, "student")
+    inp = {"student_id": student_id, "concepts": concepts}
+    if mode == "guided":            # quick sessions keep exactly the input they always had
+        inp |= {"mode": "guided", "exam_question": exam_question}
+    store.append(run, "input", inp, "student")
     store.append(run, "learner_model", model.model_dump(), "system")
     learners.save(store, model)
     return run
@@ -91,6 +95,13 @@ def submit_mcq(store: Store, qid: str, choice: int, confidence: str | None = Non
 
 def submit_text(store: Store, qid: str, text: str, confidence: str | None = None) -> str | None:
     given = {"mode": "text", "text": text, "confidence": confidence}
+    return callback.answer(store, qid, json.dumps(given), who="student")
+
+
+def submit_code(store: Store, qid: str, code: str, confidence: str | None = None,
+                assisted: bool = False) -> str | None:
+    """A program for a code question. `assisted`: a suggestion chip helped write it."""
+    given = {"mode": "code", "code": code, "confidence": confidence, "assisted": assisted}
     return callback.answer(store, qid, json.dumps(given), who="student")
 
 

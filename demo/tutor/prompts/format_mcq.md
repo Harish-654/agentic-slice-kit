@@ -25,6 +25,7 @@ names are required; do not rename, add or nest anything else. Leave `open` null.
   "citations": ["note-id-you-used"],
   "diagram": null,
   "open": null,
+  "code_task": null,
   "quiz": {
     "question": "one self-contained question",
     "code": null,
