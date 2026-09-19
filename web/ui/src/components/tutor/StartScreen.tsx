@@ -1,7 +1,9 @@
 import { useRef, useState, type FC, type FormEvent } from 'react'
-import { FileTextIcon, GraduationCapIcon, Loader2Icon, PaperclipIcon, XIcon } from 'lucide-react'
+import { FileTextIcon, Loader2Icon, PaperclipIcon, XIcon } from 'lucide-react'
+import { MasteryRing } from '@/components/atlas/MasteryRing'
+import { Mark } from '@/components/shell/Mark'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -66,17 +68,46 @@ export const StartScreen: FC<{
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <GraduationCapIcon className="size-5" />
-          </div>
-          <CardTitle className="text-xl">What do you want to learn?</CardTitle>
-          <CardDescription>
-            Short lessons, then a quick check. The tutor remembers what you get wrong and teaches it a different way.
-          </CardDescription>
-        </CardHeader>
+    <div className="mx-auto grid min-h-full max-w-6xl items-center gap-10 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-16">
+      <div className="max-w-xl">
+        <div className="text-route flex items-center gap-2.5">
+          <Mark className="size-9" />
+          <span className="font-heading text-foreground text-xl font-semibold">Tutor</span>
+        </div>
+        <p className="eyebrow mt-10">Begin an expedition</p>
+        <h1 className="mt-2 text-4xl leading-[1.08] font-semibold sm:text-5xl">What do you want to learn?</h1>
+        <p className="text-muted-foreground mt-4 max-w-md text-[1.05rem] leading-relaxed">
+          Short lessons, then a quick check. The tutor keeps a model of you: it remembers what you get wrong and teaches it a different way.
+        </p>
+        <ul className="mt-8 flex flex-col gap-4">
+          {[
+            ['Your twin', 'What the tutor believes about you, in plain view and changing after every answer.'],
+            ['Your route', 'It finds what your topic builds on, then plans the way there.'],
+            ['Your sources', 'Teach from your own notes, with citations, or say so when it is using general knowledge.'],
+          ].map(([t, d]) => (
+            <li key={t} className="flex gap-3">
+              <span className="bg-route mt-2.5 size-1.5 shrink-0 rounded-full" aria-hidden />
+              <span>
+                <span className="font-heading block text-lg font-semibold">{t}</span>
+                <span className="text-muted-foreground text-sm">{d}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-10 hidden items-center gap-4 lg:flex" aria-hidden>
+          {([['Builds on', 0.9, 'got-it'], ['Part', 0.5, 'learning'], ['Final check', 0, 'new']] as const).map(([label, v, b], i) => (
+            <div key={label} className="flex items-center gap-4">
+              {i > 0 ? <span className="border-route/50 w-10 border-t border-dashed" /> : null}
+              <div className="flex flex-col items-center gap-1.5">
+                <MasteryRing value={v} band={b} size={52} />
+                <span className="eyebrow text-[0.625rem]">{label}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Card className="w-full shadow-[var(--shadow-page)]">
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">

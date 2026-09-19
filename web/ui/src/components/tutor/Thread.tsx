@@ -1,6 +1,10 @@
 import { useEffect, type FC } from 'react'
 import { AuiIf, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
-import { ArrowUpIcon } from 'lucide-react'
+import { m } from 'motion/react'
+import { ArrowUpIcon, ChevronDownIcon } from 'lucide-react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Mark } from '@/components/shell/Mark'
+import { rise } from '@/design/motion'
 import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -25,18 +29,22 @@ const TOOLS = {
 }
 
 const AssistantMessage: FC = () => (
-  <MessagePrimitive.Root className="fade-in slide-in-from-bottom-1 animate-in duration-200">
-    <div className="text-[0.95rem] leading-relaxed">
+  <MessagePrimitive.Root>
+    <m.div {...rise} className="text-[0.95rem] leading-relaxed">
       <MessagePrimitive.Parts components={{ Text: MarkdownText, tools: TOOLS }} />
-    </div>
+    </m.div>
   </MessagePrimitive.Root>
 )
 
+/** The student's answer, written into the margin of the page like an annotation, not sent as a chat bubble. */
 const UserMessage: FC = () => (
-  <MessagePrimitive.Root className="fade-in slide-in-from-bottom-1 animate-in flex justify-end duration-200">
-    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-      <MessagePrimitive.Parts components={{ Text: ({ text }) => <p className="whitespace-pre-wrap">{text}</p> }} />
-    </div>
+  <MessagePrimitive.Root className="flex justify-end">
+    <m.div {...rise} className="border-route/70 max-w-[85%] border-r-2 pr-4 text-right">
+      <p className="eyebrow mb-0.5">You answered</p>
+      <div className="font-heading text-[1.05rem] italic">
+        <MessagePrimitive.Parts components={{ Text: ({ text }) => <p className="whitespace-pre-wrap">{text}</p> }} />
+      </div>
+    </m.div>
   </MessagePrimitive.Root>
 )
 
@@ -57,13 +65,11 @@ const Working: FC = () => {
       ? 'Checking your answer…'
       : 'Writing your next lesson…'
   return (
-    <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status" aria-live="polite">
-      <span className="flex gap-1" aria-hidden>
-        {[0, 150, 300].map((d) => (
-          <span key={d} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style={{ animationDelay: `${d}ms` }} />
-        ))}
-      </span>
-      {label}
+    <div className="text-muted-foreground flex items-center gap-3 text-sm" role="status" aria-live="polite">
+      <m.span aria-hidden animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }} className="text-route inline-flex">
+        <Mark className="size-6" />
+      </m.span>
+      <span className="font-heading italic">{label}</span>
     </div>
   )
 }
@@ -73,10 +79,10 @@ const Working: FC = () => {
 const TextAnswer: FC = () => {
   const { confidence } = useTutor()
   return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border bg-muted/30 p-2 focus-within:border-foreground/30">
+    <ComposerPrimitive.Root className="bg-card focus-within:border-route/60 focus-within:ring-route/20 flex items-end gap-2 rounded-2xl border p-2 shadow-[var(--shadow-page)] transition focus-within:ring-3">
       <ComposerPrimitive.Input
         placeholder="Explain it in your own words…"
-        className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-6 outline-none placeholder:text-muted-foreground/60"
+        className="font-heading placeholder:text-muted-foreground/60 max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-6 outline-none"
         rows={1}
         autoFocus
         aria-label="Your answer"
@@ -100,6 +106,7 @@ const Footer: FC = () => {
   const nextWritten = snap.progress.answer_mode === 'text'
   const nextProgram = snap.progress.answer_mode === 'code'
   const code = useCodeStatus()
+  const wide = window.matchMedia('(min-width: 768px)').matches
   return (
     <div className="flex flex-col gap-3">
       {writing ? <TextAnswer /> : null}
@@ -114,28 +121,30 @@ const Footer: FC = () => {
       {canAnswer && nextProgram ? (
         <p className="text-center text-xs text-muted-foreground">Your next question will be a program to write.</p>
       ) : null}
-      <div className="flex items-center justify-end gap-2">
-        <Label htmlFor="own-words" className="text-sm font-normal text-muted-foreground">
-          Ask my next questions in my own words
-        </Label>
-        <Switch
-          id="own-words"
-          checked={nextWritten}
-          disabled={!canAnswer}
-          onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')}
-        />
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <Label htmlFor="program-mode" className="text-sm font-normal text-muted-foreground">
-          {code && !code.available ? 'Programs need the code sandbox (switched off here)' : 'Ask my next question as a program to write'}
-        </Label>
-        <Switch
-          id="program-mode"
-          checked={nextProgram}
-          disabled={!canAnswer || !code?.available}
-          onCheckedChange={(on) => setMode(on ? 'code' : 'mcq')}
-        />
-      </div>
+      {/* Open on wide screens, where there is room and the switches should be seen; folded on a phone. */}
+      <Collapsible defaultOpen={wide} className="bg-card rounded-xl border border-dashed px-3 py-2">
+        <CollapsibleTrigger className="flex w-full items-center justify-between">
+          <span className="eyebrow">Next question</span>
+          <span className="text-muted-foreground flex items-center gap-1 text-xs">
+            {nextProgram ? 'A program' : nextWritten ? 'In your own words' : 'Multiple choice'}
+            <ChevronDownIcon className="size-3.5" />
+          </span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="own-words" className="text-muted-foreground text-sm font-normal">
+              Ask my next questions in my own words
+            </Label>
+            <Switch id="own-words" checked={nextWritten} disabled={!canAnswer} onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')} />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="program-mode" className="text-muted-foreground text-sm font-normal">
+              {code && !code.available ? 'Programs need the code sandbox (switched off here)' : 'Ask my next question as a program to write'}
+            </Label>
+            <Switch id="program-mode" checked={nextProgram} disabled={!canAnswer || !code?.available} onCheckedChange={(on) => setMode(on ? 'code' : 'mcq')} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
@@ -172,19 +181,19 @@ export const Thread: FC = () => {
 }
 
 const ThreadView: FC = () => (
-  <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col bg-background">
+  <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
     <ThreadPrimitive.Viewport
       autoScroll={false}
       scrollToBottomOnRunStart={false}
       scrollToBottomOnInitialize={false}
       scrollToBottomOnThreadSwitch={false}
       className="relative flex flex-1 flex-col overflow-y-auto scroll-smooth">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 pt-6">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 pt-8">
         <ThreadPrimitive.Messages>{() => <Message />}</ThreadPrimitive.Messages>
         <AuiIf condition={(s) => s.thread.isRunning}>
           <Working />
         </AuiIf>
-        <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-background pb-4 pt-2 md:pb-6">
+        <ThreadPrimitive.ViewportFooter className="from-background via-background sticky bottom-0 mt-auto bg-gradient-to-t to-transparent pt-6 pb-4 md:pb-6">
           <Footer />
         </ThreadPrimitive.ViewportFooter>
         {/* After the footer, not before it: scrolling here stops with the footer BELOW the last message.

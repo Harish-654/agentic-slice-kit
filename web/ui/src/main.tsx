@@ -1,19 +1,22 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { LazyMotion, MotionConfig, domAnimation } from 'motion/react'
 import './index.css'
 import App from './App.tsx'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { initTheme } from '@/lib/theme'
 
-// Follow the system theme. shadcn switches on a `dark` class.
-const media = window.matchMedia('(prefers-color-scheme: dark)')
-const sync = () => document.documentElement.classList.toggle('dark', media.matches)
-sync()
-media.addEventListener('change', sync)
+initTheme()
 
+// LazyMotion + `m` components keep Motion's cost small; reducedMotion="user" honours the OS setting everywhere.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TooltipProvider>
-      <App />
-    </TooltipProvider>
+    <LazyMotion features={domAnimation} strict>
+      <MotionConfig reducedMotion="user">
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </MotionConfig>
+    </LazyMotion>
   </StrictMode>,
 )

@@ -1,0 +1,158 @@
+/* Field Atlas: the one place colour and surface are decided.
+ *
+ * Light is warm paper and ink; dark is a night study, not inverted greys. The shadcn
+ * variables (--background, --primary, ...) are mapped onto these, so every shadcn component
+ * inherits the theme. Components use the semantic names (bg-correct, text-twin, ...) and
+ * never a raw colour. Roles:
+ *   ink        text and the primary action        paper      the page
+ *   correct    right answers, mastered            caution    review due, care needed
+ *   destructive wrong, failure (madder)           twin       what the tutor believes about you
+ *   route      the mission path                   highlight  the marker pen: emphasis only
+ */
+
+:root {
+  --radius: 0.75rem;
+
+  --paper: oklch(0.968 0.014 88);
+  --ink: oklch(0.235 0.022 55);
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: oklch(0.986 0.008 88);
+  --card-foreground: var(--ink);
+  --popover: oklch(0.986 0.008 88);
+  --popover-foreground: var(--ink);
+  --primary: oklch(0.29 0.055 265);
+  --primary-foreground: oklch(0.97 0.014 88);
+  --secondary: oklch(0.935 0.018 85);
+  --secondary-foreground: var(--ink);
+  --muted: oklch(0.94 0.016 85);
+  --muted-foreground: oklch(0.49 0.025 65);
+  --accent: oklch(0.925 0.05 90);
+  --accent-foreground: var(--ink);
+  --destructive: oklch(0.53 0.165 27);
+  --border: oklch(0.87 0.02 80);
+  --input: oklch(0.85 0.022 80);
+  --ring: oklch(0.5 0.11 265);
+
+  --correct: oklch(0.5 0.1 165);
+  --caution: oklch(0.6 0.13 68);
+  --twin: oklch(0.45 0.14 275);
+  --route: oklch(0.56 0.13 45);
+  --highlight: oklch(0.86 0.13 92);
+
+  --chart-1: var(--twin);
+  --chart-2: var(--route);
+  --chart-3: var(--correct);
+  --chart-4: var(--caution);
+  --chart-5: var(--muted-foreground);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* surfaces */
+  --shadow-page: 0 1px 0 oklch(1 0 0 / 60%) inset, 0 1px 2px oklch(0.3 0.03 60 / 8%), 0 8px 24px -12px oklch(0.3 0.03 60 / 18%);
+  --grain-opacity: 0.045;
+}
+
+.dark {
+  --paper: oklch(0.185 0.025 268);
+  --ink: oklch(0.93 0.018 88);
+
+  --card: oklch(0.225 0.028 268);
+  --popover: oklch(0.24 0.03 268);
+  --primary: oklch(0.86 0.08 88);
+  --primary-foreground: oklch(0.22 0.03 268);
+  --secondary: oklch(0.27 0.03 268);
+  --muted: oklch(0.265 0.03 268);
+  --muted-foreground: oklch(0.71 0.025 85);
+  --accent: oklch(0.33 0.05 90);
+  --destructive: oklch(0.72 0.15 25);
+  --border: oklch(1 0.02 88 / 12%);
+  --input: oklch(1 0.02 88 / 16%);
+  --ring: oklch(0.72 0.1 275);
+
+  --correct: oklch(0.76 0.11 165);
+  --caution: oklch(0.8 0.13 78);
+  --twin: oklch(0.76 0.11 280);
+  --route: oklch(0.76 0.12 55);
+  --highlight: oklch(0.8 0.11 90);
+
+  --shadow-page: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 12px 32px -16px oklch(0 0 0 / 60%);
+  --grain-opacity: 0.06;
+}
+
+@layer base {
+  html {
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Paper grain, fixed behind everything. Purely decorative. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.2  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--highlight) 55%, transparent);
+    color: var(--ink);
+  }
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* The reading surface: lesson text is set in the serif, like a page in a book. */
+.aui-md {
+  font-family: var(--font-heading);
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--foreground);
+}
+.aui-md .aui-md-strong {
+  font-weight: 600;
+  background: linear-gradient(transparent 62%, color-mix(in oklch, var(--highlight) 55%, transparent) 62%);
+  padding: 0 0.05em;
+}
+.aui-md .aui-md-inline-code,
+.aui-md pre,
+.aui-md .aui-code-header-root {
+  font-family: var(--font-mono);
+}
+.aui-md .aui-md-inline-code {
+  background: color-mix(in oklch, var(--twin) 9%, var(--muted));
+}
+
+/* Small-caps label used for eyebrows and section headings across the app. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -14,14 +14,14 @@ export const CodeCoach: FC = () => {
   if (!status) return null
   if (!status.available)
     return (
-      <section className="border-t p-4 text-xs text-muted-foreground">
-        <h3 className="mb-1 text-sm font-semibold text-foreground">Code coach</h3>
+      <section className="border-t border-dashed p-5 text-xs text-muted-foreground">
+        <h3 className="eyebrow mb-2">Code coach</h3>
         Running code is switched off on this server. {status.reason}
       </section>
     )
   return (
-    <section className="space-y-2 border-t p-4">
-      <h3 className="text-sm font-semibold">Code coach</h3>
+    <section className="space-y-3 p-5">
+      <h3 className="eyebrow">Code coach</h3>
       <CodeEditor
         code={code}
         setCode={(c) => {
