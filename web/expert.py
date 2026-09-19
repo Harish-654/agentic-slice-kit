@@ -71,7 +71,8 @@ def _page(title: str, body: str) -> HTMLResponse:
 def index():
     s = _store()
     callback.sweep(s)                     # expire anything past its deadline
-    open_qs = callback.pending(s)
+    # A student's quiz question is parked the same way, but it is not for experts.
+    open_qs = [q for q in callback.pending(s) if q.context.get("kind") != "student_quiz"]
     if not open_qs:
         return _page("Nothing waiting",
                      "<h1>Nothing waiting</h1>"
