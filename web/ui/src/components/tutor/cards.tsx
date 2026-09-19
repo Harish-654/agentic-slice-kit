@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { humanize, STYLE_LABEL } from '@/lib/format'
-import type { Answered, CodeTaskQ, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
+import type { Answered, Choice, CodeTaskQ, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
 import { CodeEditor } from './CodeEditor'
 import { useTutor } from './context'
 
@@ -331,7 +331,45 @@ export const FeedbackCard: ToolCallMessagePartComponent = ({ args }) => {
   )
 }
 
+const CHOICE_LABEL: Record<Choice, string> = {
+  quiz: 'Quiz me',
+  example: 'Show me an example',
+  more_detail: 'More detail',
+  deeper: 'Go deeper',
+  skip: 'Skip this part',
+  stop: 'Stop for now',
+}
+
+/** Guided sessions: after an explanation the student decides what happens next. The tutor has
+ * already written the check, so "Quiz me" is instant. Once they have picked, it reads as a
+ * plain line instead of buttons. */
+export const ChoicesCard: ToolCallMessagePartComponent = ({ args }) => {
+  const { options, chosen } = args as { options: Choice[]; chosen: Choice | null }
+  const { snap, choose } = useTutor()
+  if (chosen) return <p className="text-sm text-muted-foreground">You chose: {CHOICE_LABEL[chosen]}.</p>
+  const ready = snap.status === 'waiting_choice'
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label="What next?">
+      {options.map((o) => (
+        <Button
+          key={o}
+          type="button"
+          size="sm"
+          variant={o === 'quiz' ? 'default' : 'outline'}
+          disabled={!ready}
+          onClick={() => choose(o)}
+        >
+          {CHOICE_LABEL[o]}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
 const END_TEXT: Record<string, string> = {
+  revision_limit:
+    'You tried the final check three times. The parts that tripped you up are marked in your progress, so come back to them whenever you like.',
+  student_stopped: 'You stopped here. Your progress is saved, so pick up again whenever you like.',
   mastery: 'You have got the hang of all of these. Nicely done.',
   skipped: 'You skipped the topics your documents do not cover. Your progress is saved.',
   session_limit: 'That is enough for one sitting. Your progress is saved, so pick up again whenever you like.',

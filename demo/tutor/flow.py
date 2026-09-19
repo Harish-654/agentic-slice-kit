@@ -26,18 +26,22 @@ from slice.llm import SchemaFailure, Truncated, complete
 from slice.records import RunState
 
 from . import coach, curriculum, learner, learners, library, sandbox, steps
-from .schema import Grade, LearnerModel, Lesson, PlanDraft, Probe
+from .schema import Grade, LearnerModel, Lesson, OpenQuestion, PlanDraft, Probe
 
 STUDENT_WAIT_MINUTES = 24 * 60
 """A student who steps away for a meal has not abandoned the lesson. The kit's
 default wait is minutes, sized for an expert on call."""
 
-KIND_QUIZ, KIND_GAP = "student_quiz", "doc_gap"
+KIND_QUIZ, KIND_GAP, KIND_CHOICE = "student_quiz", "doc_gap", "step_choice"
 
 _PROMPTS = Path(__file__).parent / "prompts"
 FORMATS = {"mcq": "format_mcq", "text": "format_open", "code": "format_code"}
 KINDS = {"mcq": "multiple-choice", "text": "written", "code": "program"}
 PROBE_TRIES = 2                 # a probe whose code will not run gets one retry, then is skipped
+# What a student asks for when they want more of a lesson instead of the quiz.
+FOCUS = {"example": "a NEW worked example of the same idea, different from anything already shown",
+         "more_detail": "the same idea explained in more detail, one step at a time",
+         "deeper": "a deeper look: what the idea really means, subtle cases, and how it connects to other ideas"}
 
 
 def _prompt(*names: str) -> str:
@@ -49,10 +53,13 @@ def _notes(chunks) -> str:
 
 
 def build_teach_messages(concept, style, source, want, profile, misconception,
-                         recent: bool = True, notes: str = "") -> list[dict]:
-    """`source` is "general" or "docs"; `want` is "mcq", "text" (an open question) or "code"."""
+                         recent: bool = True, notes: str = "", focus: str | None = None) -> list[dict]:
+    """`source` is "general" or "docs"; `want` is "mcq", "text" (an open question) or "code".
+    `focus` is what a guided student asked for instead of the quiz (a key of FOCUS)."""
     system = _prompt("teach", f"source_{source}", FORMATS[want])
     user = [f"TOPIC: {concept}", f"STYLE: {style}", "STUDENT PROFILE:\n" + profile]
+    if focus:
+        user.append("THE STUDENT ASKED FOR: " + FOCUS[focus])
     if misconception:
         when = "the student just chose" if recent else "this student held in an earlier session on this topic"
         user.append(f"MISCONCEPTION {when}: {misconception}")
@@ -92,6 +99,16 @@ def build_probe_messages(concept: str, profile: str, problem: str | None = None)
                  f"{problem}\nWrite a different question whose `code` runs cleanly.")
     return [{"role": "system", "content": _prompt("probe")},
             {"role": "user", "content": user}]
+
+
+def build_final_messages(target: str, parts: list[str], exam: str | None, profile: str) -> list[dict]:
+    user = [f"TOPIC: {target}", "PARTS OF THE TOPIC: " + (", ".join(parts) or "the topic as a whole"),
+            "STUDENT PROFILE:\n" + profile]
+    if exam:
+        user.append("EXAM QUESTION (it will be shown to the student exactly as written; "
+                    "write the rubric, model answer and common mistakes for it): " + exam)
+    return [{"role": "system", "content": _prompt("final")},
+            {"role": "user", "content": "\n\n".join(user)}]
 
 
 def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbox.available):
@@ -173,7 +190,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                 learners.save(ctx.store, model)
             plan = plan | {"degraded": degraded}
         plan = {"target": target, **plan}
-        inp = {**inp, "concepts": [*plan["prereqs"], target], "plan": plan}
+        inp = {**inp, "concepts": [*plan["prereqs"], *plan["subtopics"], target], "plan": plan}
         ctx.append("input", inp, produced_by="agent:plan")
         return model, inp
 
@@ -209,27 +226,112 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                      dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
         return RunState.AWAITING_EXPERT
 
+    def _explains_in_row(ctx) -> int:
+        """Held explanations since the student last saw a check: the cap on how long the
+        tutor can keep explaining before it must let them be asked something."""
+        n = 0
+        for v in reversed(ctx.store.replay(ctx.run_id)):
+            if v.kind in ("reveal", "check", "topic_skipped"):
+                break
+            if v.kind == "lesson" and v.payload.get("held"):
+                n += 1
+        return n
+
+    def _ask_choice(ctx, concept) -> RunState:
+        """After an explanation, hand the student the wheel. The check is already written and held
+        back, so "quiz me" costs no model call."""
+        callback.ask(ctx.store, ctx.run_id, "What would you like to do next?",
+                     {"kind": KIND_CHOICE, "concept": concept,
+                      "options": steps.choices(_explains_in_row(ctx)),
+                      "resume_state": RunState.DRAFTING.value},
+                     dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
+        return RunState.AWAITING_EXPERT
+
+    def _reveal(ctx, concept) -> RunState:
+        """Show the check that was held back with the last explanation. No model call."""
+        lesson = ctx.latest("lesson")
+        ctx.append("reveal", {"concept": concept}, produced_by="system")
+        callback.ask(ctx.store, ctx.run_id, (lesson["quiz"] or lesson["open"] or lesson["code_task"])["question"],
+                     {"kind": KIND_QUIZ, "concept": concept, "resume_state": RunState.GATING.value},
+                     dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
+        return RunState.AWAITING_EXPERT
+
+    def _resumed_by_choice(ctx):
+        """None when this DRAFTING is not the answer to a "what next?" question. Otherwise
+        (choice, concept), or ("left", None) if nobody answered in time."""
+        last = ctx.store.replay(ctx.run_id)[-1]
+        if last.kind != "expert_answer":
+            return None
+        ask = next((q.payload for q in ctx.history("question")
+                    if q.payload["id"] == last.payload.get("question_id")), None)
+        if not ask or ask["context"].get("kind") != KIND_CHOICE:
+            return None
+        if last.payload.get("who") != "student_choice":
+            return "left", None
+        return last.payload["answer"], ask["context"]["concept"]
+
+    def _final(ctx, model, inp) -> RunState:
+        """The last check on the whole topic: one written question, graded against a rubric. A pasted
+        exam question is used word for word, and the model only writes how to grade it."""
+        plan, exam = inp["plan"], inp.get("exam_question")
+        target = plan["target"]
+        q = call(settings=ctx.settings, budget=ctx.budget,
+                 messages=build_final_messages(target, plan["subtopics"], exam, learner.profile(model, target)),
+                 schema=OpenQuestion, step="final", reasoning=False)
+        if exam:
+            q = q.model_copy(update={"question": exam})
+        ctx.append("lesson", {"covered": True, "citations": [], "diagram": None, "quiz": None,
+                              "code_task": None, "open": q.model_dump(),
+                              "explanation": f"**Final check** on {target.replace('-', ' ')}. "
+                                             "Answer in your own words, using what you have learned.",
+                              "concept": target, "style": "final", "source": "general",
+                              "notes": "", "final": True}, produced_by="agent:final")
+        callback.ask(ctx.store, ctx.run_id, q.question,
+                     {"kind": KIND_QUIZ, "concept": target, "resume_state": RunState.GATING.value},
+                     dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
+        return RunState.AWAITING_EXPERT
+
     def handle_drafting(ctx) -> RunState:
         model = _model(ctx)
         inp = ctx.latest("input")
-        action = "teach"
+        action, focus, held = "teach", None, False
 
         if inp.get("mode") == "guided":
             model, inp = _ensure_plan(ctx, model, inp)
-            skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
-            checks = [c.payload for c in ctx.history("check")]
-            action, concept = steps.decide(
-                inp["concepts"], model, checks, skipped, probing=not model.use_docs,
-                unprobed={v.payload["concept"] for v in ctx.history("probe_skipped")})
-            if action == "done":
-                return _end(ctx, concept)
-            if len(checks) >= steps.MAX_CHECKS:
-                return _end(ctx, "session_limit")
-            if action == "probe":
-                asked = _probe(ctx, model, concept)
-                if asked is not None:
-                    return asked
-                # no trustworthy probe could be made: teach the prerequisite instead
+            held = True                       # guided explanations wait for the student's choice
+            skipped = ({c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
+                       | {v.payload["concept"] for v in ctx.history("topic_skipped")})
+            resumed = _resumed_by_choice(ctx)
+            if resumed:
+                choice, concept = resumed
+                if choice == "left":
+                    return _end(ctx, "student_left")
+                if choice == "stop":
+                    return _end(ctx, "student_stopped")
+                if choice == "quiz":
+                    return _reveal(ctx, concept)
+                if choice == "skip":
+                    ctx.append("topic_skipped", {"concept": concept}, produced_by="system")
+                    skipped.add(concept)
+                else:
+                    focus = choice            # example / more_detail / deeper: explain again
+            if focus is None:
+                checks = [c.payload for c in ctx.history("check")]
+                action, concept = steps.decide(
+                    inp["concepts"], model, checks, skipped, probing=not model.use_docs,
+                    unprobed={v.payload["concept"] for v in ctx.history("probe_skipped")},
+                    subtopics=inp["plan"]["subtopics"])
+                if action == "done":
+                    return _end(ctx, concept)
+                if len(checks) >= steps.MAX_CHECKS or len(ctx.history("lesson")) >= steps.MAX_STEPS:
+                    return _end(ctx, "session_limit")
+                if action == "final":
+                    return _final(ctx, model, inp)
+                if action == "probe":
+                    asked = _probe(ctx, model, concept)
+                    if asked is not None:
+                        return asked
+                    # no trustworthy probe could be made: teach the prerequisite instead
         else:
             skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
             concept = learner.pick_concept(model, [c for c in inp["concepts"] if c not in skipped])
@@ -247,12 +349,12 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
 
         want = model.answer_mode
         wrong, misconception, recent = _history(ctx, model, concept)
-        style = learner.style_for(wrong)
+        style = "worked_example" if focus == "example" else learner.style_for(wrong)
         lesson = call(
             settings=ctx.settings, budget=ctx.budget,
             messages=build_teach_messages(concept, style, source, want,
                                           learner.profile(model, concept), misconception,
-                                          recent, _notes(chunks)),
+                                          recent, _notes(chunks), focus),
             schema=Lesson, step="teach", reasoning=False,
         )
 
@@ -269,7 +371,11 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
 
         payload = lesson.model_dump() | {"citations": cited, "concept": concept, "style": style,
                                          "source": source, "notes": _notes(chunks)}
+        if held:                              # the check is written now but shown only on "quiz me"
+            payload["held"] = True
         ctx.append("lesson", payload, produced_by="agent:teach")
+        if held:
+            return _ask_choice(ctx, concept)
 
         # Suspend on the student. Waiting is a state, not this process's job.
         callback.ask(ctx.store, ctx.run_id, (lesson.quiz or lesson.open or lesson.code_task).question,
@@ -320,10 +426,15 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
 
         model = learner.apply_check(_model(ctx), concept, correct, mis, question=stem,
                                     confidence=confidence, dont_know=unknown)
+        extra = {"probe": True} if lesson.get("probe") else {}
+        if lesson.get("final"):
+            extra["final"] = True
+            if not correct:                   # the weakest part is what gets explained again
+                parts = (ctx.latest("input").get("plan") or {}).get("subtopics") or [concept]
+                extra["revisit"] = min(parts, key=lambda c: learner.effective_mastery(model, c))
         ctx.append("check", {"concept": concept, "mode": given["mode"], "correct": correct,
                              "misconception": learner.slug(mis), "feedback": feedback,
-                             "confidence": confidence, "dont_know": unknown}
-                   | ({"probe": True} if lesson.get("probe") else {}),
+                             "confidence": confidence, "dont_know": unknown} | extra,
                    produced_by="agent:gate" if given["mode"] == "text" else "system")
         ctx.append("learner_model", model.model_dump(), produced_by="system")
         learners.save(ctx.store, model)

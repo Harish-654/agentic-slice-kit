@@ -6,7 +6,7 @@ import {
   type ThreadMessageLike,
 } from '@assistant-ui/react'
 import { Button } from '@/components/ui/button'
-import type { Confidence, Msg } from '@/lib/api'
+import type { CodeTaskQ, Confidence, Msg, OpenQ, Quiz } from '@/lib/api'
 import { api, ApiError } from '@/lib/api'
 import { useSession } from '@/lib/useSession'
 import { TutorContext, type TutorApi } from './context'
@@ -23,6 +23,15 @@ function convertMessage(m: Msg): ThreadMessageLike {
     args: args as never,
     result: result as never,
   })
+  /** The check on a lesson or a revealed card. Empty while a guided explanation holds its check back. */
+  const checkParts = (c: { quiz: Quiz | null; open: OpenQ | null; code_task: CodeTaskQ | null }) =>
+    c.quiz
+      ? [call('quiz', { quiz: c.quiz }, c.quiz.answered ?? undefined)]
+      : c.code_task
+        ? [call('code_task', { task: c.code_task }, c.code_task.answered ?? undefined)]
+        : c.open
+          ? [call('open_question', { open: c.open }, c.open.answered ?? undefined)]
+          : []
   switch (m.kind) {
     case 'lesson':
       return {
@@ -33,12 +42,17 @@ function convertMessage(m: Msg): ThreadMessageLike {
           call('lesson_header', { concept: m.concept, style: m.style, source: m.source, citations: m.citations }, true),
           { type: 'text', text: m.explanation },
           ...(m.diagram ? [call('diagram', { source: m.diagram }, true)] : []),
-          m.quiz
-            ? call('quiz', { quiz: m.quiz }, m.quiz.answered ?? undefined)
-            : m.code_task
-              ? call('code_task', { task: m.code_task }, m.code_task.answered ?? undefined)
-              : call('open_question', { open: m.open }, m.open?.answered ?? undefined),
+          ...checkParts(m), // none while a guided explanation is waiting to be followed by a quiz
         ],
+      }
+    case 'card':
+      return { id: m.id, role: 'assistant', status: done, content: checkParts(m) }
+    case 'choices':
+      return {
+        id: m.id,
+        role: 'assistant',
+        status: done,
+        content: [call('choices', { options: m.options, chosen: m.chosen }, m.chosen ?? undefined)],
       }
     case 'answer':
       return { id: m.id, role: 'user', content: [{ type: 'text', text: m.text }] }
@@ -85,7 +99,7 @@ export function TutorRuntime({
   onRestart: () => void
   children: (ready: boolean) => ReactNode
 }) {
-  const { snap, error, answerChoice, answerText, answerCode, dontKnow, setMode, setSource, fallback, refresh } =
+  const { snap, error, answerChoice, answerText, answerCode, dontKnow, setMode, setSource, fallback, choose, refresh } =
     useSession(sessionId)
   const status = snap?.status
   const canAnswer = status === 'waiting_student'
@@ -146,6 +160,7 @@ export function TutorRuntime({
             setMode,
             setSource,
             fallback,
+            choose,
             addDocs: (files) => docs(() => api.upload(student, files)),
             addSample: () => docs(() => api.sample(student)),
             removeDoc: (name) => docs(() => api.removeDoc(student, name)),

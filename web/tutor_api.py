@@ -105,37 +105,45 @@ def _status(s: Store, run_id: str) -> str:
     if state.is_suspended:
         if session.open_quiz(s, run_id):
             return "waiting_student"
-        return "waiting_choice" if session.open_gap(s, run_id) else "stalled"
+        return "waiting_choice" if session.open_gap(s, run_id) or session.open_choice(s, run_id) else "stalled"
     return "stalled"          # mid-step with nothing driving it, e.g. the server restarted
 
 
+def _card(p: dict) -> dict:
+    """The check as the student may see it: the question, and nothing that grades it."""
+    card = {"quiz": None, "open": None, "code_task": None}
+    if p["quiz"]:
+        q = p["quiz"]
+        card["quiz"] = {"question": q["question"], "code": q.get("code"),
+                        "options": [{"text": o["text"]} for o in q["options"]],   # no answer key
+                        "answered": None}
+    elif p.get("code_task"):
+        t = p["code_task"]                     # the tests, beliefs and solution stay on the server
+        card["code_task"] = {"question": t["question"], "starter": t["starter"], "answered": None}
+    else:
+        o = p["open"]
+        card["open"] = {"question": o["question"], "code": o.get("code"), "answered": None}
+    return card
+
+
 def _lesson_message(v) -> dict:
-    """Only what the student may see. Everything else stays in the database."""
+    """Only what the student may see. Everything else stays in the database. A held lesson
+    (guided mode) shows its explanation now and its check only once they ask for it."""
     p = v.payload
     msg = {"id": f"{v.seq}-lesson", "role": "assistant", "kind": "lesson",
            "concept": p["concept"], "style": p["style"], "source": p.get("source", "docs"),
            # Stored as <student>__<file>#n; the student only ever knows their own file name.
            "citations": [c.split("__", 1)[-1] for c in p["citations"]],
            "explanation": p["explanation"],
-           "diagram": p.get("diagram"), "quiz": None, "open": None, "code_task": None}
-    if p["quiz"]:
-        q = p["quiz"]
-        msg["quiz"] = {"question": q["question"], "code": q.get("code"),
-                       "options": [{"text": o["text"]} for o in q["options"]],   # no answer key
-                       "answered": None}
-    elif p.get("code_task"):
-        t = p["code_task"]                     # the tests, beliefs and solution stay on the server
-        msg["code_task"] = {"question": t["question"], "starter": t["starter"], "answered": None}
-    else:
-        o = p["open"]
-        msg["open"] = {"question": o["question"], "code": o.get("code"), "answered": None}
-    return msg
+           "diagram": p.get("diagram")}
+    return msg | ({"quiz": None, "open": None, "code_task": None} if p.get("held") else _card(p))
 
 
 def _messages(versions) -> list[dict]:
     gaps = {v.payload["question_id"]: v.payload["answer"]
             for v in versions if v.kind == "expert_answer" and v.payload.get("who") == "student_gap"}
     out: list[dict] = []
+    choice_msgs: dict[str, dict] = {}
     lesson_msg: dict | None = None
     lesson_payload: dict | None = None
     reply: dict | None = None
@@ -145,6 +153,13 @@ def _messages(versions) -> list[dict]:
             lesson_payload, reply = p, None
             lesson_msg = _lesson_message(v)
             out.append(lesson_msg)
+        elif v.kind == "reveal" and lesson_payload:          # "quiz me": the held check appears
+            lesson_msg = {"id": f"{v.seq}-card", "role": "assistant", "kind": "card",
+                          "concept": lesson_payload["concept"], **_card(lesson_payload)}
+            out.append(lesson_msg)
+        elif v.kind == "expert_answer" and p.get("who") == "student_choice":
+            if p["question_id"] in choice_msgs:
+                choice_msgs[p["question_id"]]["chosen"] = p["answer"]
         elif v.kind == "expert_answer" and p.get("who") == "student" and p.get("answer"):
             reply = json.loads(p["answer"])
         elif v.kind == "check" and lesson_payload and lesson_msg:
@@ -181,6 +196,10 @@ def _messages(versions) -> list[dict]:
             out.append({"id": f"{v.seq}-failure", "role": "assistant", "kind": "notice",
                         "text": p.get("detail", "The session stopped."), "problem": True,
                         "gap": None})
+        elif v.kind == "question" and p["context"].get("kind") == "step_choice":
+            choice_msgs[p["id"]] = {"id": f"{v.seq}-choices", "role": "assistant", "kind": "choices",
+                                    "options": p["context"]["options"], "chosen": None}
+            out.append(choice_msgs[p["id"]])
         elif v.kind == "question" and p["context"].get("kind") == "doc_gap":
             out.append({"id": f"{v.seq}-gap", "role": "assistant", "kind": "notice", "problem": False,
                         "text": f"“{p['context']['concept']}” is not in your documents.",
@@ -208,7 +227,8 @@ def _progress(s: Store, run_id: str) -> dict:
                               key=lambda kv: -kv[1]),
         })
     return {"concepts": rows, "threshold": learner.MASTERY, "mode": inp.get("mode", "quick"),
-            "plan": {"target": plan["target"], "prereqs": plan["prereqs"]} if plan else None,
+            "plan": ({"target": plan["target"], "prereqs": plan["prereqs"],
+                      "subtopics": plan.get("subtopics", [])} if plan else None),
             "answer_mode": model.answer_mode, "interests": model.interests,
             "use_docs": model.use_docs, "docs": library.docs(s.meta(run_id)["student_id"])}
 
@@ -342,6 +362,24 @@ def source(run_id: str, req: SourceRequest, s: Store = Depends(get_store)):
     snapshot(s, run_id)
     _need_docs(s.meta(run_id)["student_id"], req.use_docs)
     return _toggle(run_id, s, lambda: session.set_use_docs(s, run_id, req.use_docs))
+
+
+class ChoiceRequest(BaseModel):
+    choice: str
+
+
+@router.post("/sessions/{run_id}/choice")
+def choice(run_id: str, req: ChoiceRequest, s: Store = Depends(get_store)):
+    """The student's pick from the "what next?" menu after an explanation."""
+    snapshot(s, run_id)
+    q = session.open_choice(s, run_id)
+    if q is None or is_running(run_id):
+        raise HTTPException(409, "There is nothing to choose right now.")
+    if req.choice not in q.context["options"]:
+        raise HTTPException(422, "That is not one of the options.")
+    session.submit_choice(s, q.id, req.choice)
+    _kick(run_id)
+    return snapshot(s, run_id)
 
 
 @router.post("/sessions/{run_id}/fallback")

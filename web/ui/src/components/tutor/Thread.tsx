@@ -5,8 +5,8 @@ import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
-import type { LessonMsg } from '@/lib/api'
+import { ChoicesCard, CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
+import type { CardMsg, LessonMsg } from '@/lib/api'
 import { useCodeStatus } from '@/lib/useCodeStatus'
 import { useTutor } from './context'
 
@@ -17,6 +17,7 @@ const TOOLS = {
     quiz: QuizCard,
     open_question: OpenQuestionCard,
     code_task: CodeTaskCard,
+    choices: ChoicesCard,
     feedback: FeedbackCard,
     end: EndCard,
     notice: NoticeCard,
@@ -93,7 +94,8 @@ const TextAnswer: FC = () => {
 const Footer: FC = () => {
   const { snap, canAnswer, setMode, confidence } = useTutor()
   // The box follows the question ON SCREEN; the switch is about the NEXT one.
-  const lesson = snap.messages.findLast((m): m is LessonMsg => m.kind === 'lesson')
+  // In a guided session the check arrives in a card after "quiz me", not with the lesson.
+  const lesson = snap.messages.findLast((m): m is LessonMsg | CardMsg => m.kind === 'lesson' || m.kind === 'card')
   const writing = canAnswer && lesson?.open != null
   const nextWritten = snap.progress.answer_mode === 'text'
   const nextProgram = snap.progress.answer_mode === 'code'
@@ -148,12 +150,18 @@ function useScrollToNewest() {
   const working = snap.status === 'working'
   useEffect(() => {
     if (!key) return
-    // One frame later, so the message has been rendered and its header exists.
-    const frame = requestAnimationFrame(() => {
+    // The message may not be in the page yet when this runs (a feedback card and the next lesson can
+    // arrive together), so keep looking for a moment rather than giving up after one frame. Giving up
+    // left the new lesson hidden under the footer until the student scrolled to find it.
+    let frame = 0
+    let tries = 0
+    const go = () => {
       const target =
         kind === 'lesson' ? document.getElementById(`${key}-lesson_header`) : document.getElementById('thread-end')
-      target?.scrollIntoView({ block: kind === 'lesson' ? 'start' : 'end', behavior: 'smooth' })
-    })
+      if (target) target.scrollIntoView({ block: kind === 'lesson' ? 'start' : 'end', behavior: 'smooth' })
+      else if (tries++ < 60) frame = requestAnimationFrame(go)
+    }
+    frame = requestAnimationFrame(go)
     return () => cancelAnimationFrame(frame)
   }, [key, kind, working])
 }
@@ -176,10 +184,12 @@ const ThreadView: FC = () => (
         <AuiIf condition={(s) => s.thread.isRunning}>
           <Working />
         </AuiIf>
-        <div id="thread-end" />
         <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-background pb-4 pt-2 md:pb-6">
           <Footer />
         </ThreadPrimitive.ViewportFooter>
+        {/* After the footer, not before it: scrolling here stops with the footer BELOW the last message.
+            Before it, the sticky footer covered the last ~90px of the thread, which is where the menu sits. */}
+        <div id="thread-end" />
       </div>
     </ThreadPrimitive.Viewport>
   </ThreadPrimitive.Root>

@@ -21,7 +21,8 @@ export const StartScreen: FC<{
   const [sample, setSample] = useState(false)
   const [existing, setExisting] = useState<string[]>([]) // documents this name already has
   const [useDocs, setUseDocs] = useState(false)
-  const [guided, setGuided] = useState(false)
+  // On by default: it is the mode with the "what next?" menu, and a switch nobody finds is a feature nobody sees.
+  const [guided, setGuided] = useState(true)
   const [exam, setExam] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -102,7 +103,9 @@ export const StartScreen: FC<{
               />
               <p className="text-xs text-muted-foreground">
                 {guided
-                  ? 'One topic. Or leave this empty and paste an exam question below.'
+                  ? topicList.length > 1
+                    ? 'A guided lesson takes one topic. Keep one, or turn guided off below to practise several.'
+                    : 'One topic. Or leave this empty and paste an exam question below.'
                   : 'Anything you like, separated by commas. Questions are made for you, based on what you already know.'}
               </p>
             </div>
@@ -110,9 +113,11 @@ export const StartScreen: FC<{
             <div className="flex flex-col gap-3 rounded-lg border p-3">
               <div className="flex items-start justify-between gap-3">
                 <Label htmlFor="guided" className="flex-col items-start gap-0.5 text-sm font-medium leading-snug">
-                  Check what it builds on first
+                  Guided lesson
                   <span className="text-xs font-normal text-muted-foreground">
-                    Guided: it asks about the ideas this topic needs, and only explains the ones you miss.
+                    Checks what the topic builds on, explains only what you miss, then lets you choose what
+                    next: a quiz, an example, more detail, or go deeper. Turn off for quick practice on
+                    several topics.
                   </span>
                 </Label>
                 <Switch id="guided" checked={guided} onCheckedChange={setGuided} />

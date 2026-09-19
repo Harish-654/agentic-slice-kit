@@ -13,6 +13,14 @@ import type { ConceptProgress, Progress as ProgressData } from '@/lib/api'
 /** Untouched topics read 0%: the model's starting guess is not something the student earned. */
 const pct = (c: ConceptProgress) => (c.seen ? Math.round(c.mastery * 100) : 0)
 
+/** Where a row sits in a guided plan: what to know first, the parts, and the topic that ends in a final. */
+function role(plan: ProgressData['plan'], concept: string): string | null {
+  if (!plan) return null
+  if (plan.prereqs.includes(concept)) return 'prerequisite'
+  if (plan.subtopics.includes(concept)) return 'part'
+  return concept === plan.target ? 'final check' : null
+}
+
 function state(c: ConceptProgress): { label: string; tone: string } {
   if (c.review_due) return { label: 'Review due', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
   if (c.mastered) return { label: 'Got it', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
@@ -151,8 +159,8 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">
                   {humanize(c.concept)}
-                  {progress.plan?.prereqs.includes(c.concept) ? (
-                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">prerequisite</span>
+                  {role(progress.plan, c.concept) ? (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">{role(progress.plan, c.concept)}</span>
                   ) : null}
                 </span>
                 <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', s.tone)}>

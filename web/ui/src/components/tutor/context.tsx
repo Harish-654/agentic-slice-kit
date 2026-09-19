@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AnswerMode, Confidence, Snapshot } from '@/lib/api'
+import type { AnswerMode, Choice, Confidence, Snapshot } from '@/lib/api'
 
 export type TutorApi = {
   snap: Snapshot
@@ -21,6 +21,8 @@ export type TutorApi = {
   setSource: (useDocs: boolean) => void
   /** The answer to "that topic is not in your documents". */
   fallback: (choice: 'general' | 'skip') => void
+  /** Guided sessions: what to do after an explanation (quiz me, an example, more detail…). */
+  choose: (choice: Choice) => void
   /** Document changes reject with a message that is safe to show. */
   addDocs: (files: File[]) => Promise<void>
   addSample: () => Promise<void>

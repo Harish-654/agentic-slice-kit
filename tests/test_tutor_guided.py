@@ -6,7 +6,7 @@ import time
 from demo.tutor import curriculum, learners, session, steps
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel, PlanDraft
-from demo.tutor.stub import Stub, lesson, plan, probe
+from demo.tutor.stub import Stub, final, grade, lesson, plan, probe
 from slice import runner
 from slice.llm import SchemaFailure
 from slice.store import Store
@@ -22,6 +22,20 @@ def go(store, run, stub, call=None):
 
 def answer(store, run, choice):
     session.submit_mcq(store, session.open_quiz(store, run).id, choice)
+
+
+def write(store, run, text, stub=None, confidence="high"):
+    """A written answer to the open question on screen (the final check). Runs the flow after it
+    when given a stub."""
+    session.submit_text(store, session.open_quiz(store, run).id, text, confidence)
+    if stub is not None:
+        go(store, run, stub)
+
+
+def quiz_me(store, run, stub, choice="quiz"):
+    """Guided explanations wait for the student's choice. "quiz" reveals the check held back."""
+    session.submit_choice(store, session.open_choice(store, run).id, choice)
+    go(store, run, stub)
 
 
 def guided(store, exam=None, topic=TARGET, student="s1"):
@@ -80,9 +94,10 @@ def test_with_documents_as_the_source_a_prerequisite_is_taught_not_probed():
     assert steps.decide([PRE, TARGET], m, [], probing=False) == ("teach", PRE)
 
 
-def test_the_run_ends_when_the_topic_is_already_mastered_or_skipped():
-    m = LearnerModel(student_id="s", mastery={TARGET: 0.9}, last_seen={TARGET: time.time()})
-    assert steps.decide([PRE, TARGET], m, []) == ("done", "mastery")
+def test_a_topic_already_mastered_still_has_to_pass_the_final_and_a_skipped_one_ends():
+    now = time.time()
+    m = LearnerModel(student_id="s", mastery={PRE: 0.92, TARGET: 0.9}, last_seen={PRE: now, TARGET: now})
+    assert steps.decide([PRE, TARGET], m, []) == ("final", TARGET)      # known parts are skipped, the final is not
     assert steps.decide([PRE, TARGET], LearnerModel(student_id="s"), [], skipped={TARGET}) == ("done", "skipped")
 
 
@@ -92,21 +107,25 @@ def test_a_missed_prerequisite_is_probed_then_taught_then_the_topic(tmp_path):
     store = Store(tmp_path / "r.db")
     run = guided(store)
     stub = Stub({"plan": [plan()], "probe": [probe()],
-                 "teach": [lesson("PRE"), lesson("T1"), lesson("T2")]})
+                 "teach": [lesson("PRE"), lesson("T1"), lesson("T2")],
+                 "final": [final()], "grade": [grade(True, None, "Well argued.")]})
     go(store, run, stub)                                     # plan, then the probe question
     [first] = store.history(run, "lesson")
     assert first.payload["style"] == "probe" and first.payload["concept"] == PRE
     assert first.payload["explanation"].startswith("First, a quick check")
 
-    answer(store, run, WRONG); go(store, run, stub)          # missed: teach the prerequisite
-    answer(store, run, RIGHT); go(store, run, stub)          # now the topic itself
-    answer(store, run, RIGHT); go(store, run, stub)
-    answer(store, run, RIGHT); go(store, run, stub)
+    answer(store, run, WRONG); go(store, run, stub)          # missed: teach the prerequisite (held)
+    for _ in range(3):                                       # explanation, "quiz me", the answer
+        quiz_me(store, run, stub)
+        answer(store, run, RIGHT); go(store, run, stub)
+    write(store, run, "A child inherits its parent's methods and may override one.", stub)   # the final check
 
-    assert [c for c, _ in seq(store, run)] == [PRE, PRE, TARGET, TARGET]
-    assert stub.calls == ["plan", "probe", "teach", "teach", "teach"]
+    assert [c for c, _ in seq(store, run)] == [PRE, PRE, TARGET, TARGET, TARGET]
+    assert seq(store, run)[-1][1] == "final"
+    assert stub.calls == ["plan", "probe", "teach", "teach", "teach", "final", "grade"]
     checks = store.history(run, "check")
-    assert [bool(c.payload.get("probe")) for c in checks] == [True, False, False, False]
+    assert [bool(c.payload.get("probe")) for c in checks] == [True, False, False, False, False]
+    assert [bool(c.payload.get("final")) for c in checks] == [False, False, False, False, True]
     assert store.latest(run, "session_end")["reason"] == "mastery"
     assert store.latest(run, "input")["concepts"] == [PRE, TARGET]
 
@@ -114,13 +133,16 @@ def test_a_missed_prerequisite_is_probed_then_taught_then_the_topic(tmp_path):
 def test_a_known_prerequisite_is_not_explained(tmp_path):
     store = Store(tmp_path / "r.db")
     run = guided(store)
-    stub = Stub({"plan": [plan()], "probe": [probe()], "teach": [lesson("T1"), lesson("T2")]})
+    stub = Stub({"plan": [plan()], "probe": [probe()], "teach": [lesson("T1"), lesson("T2")],
+                 "final": [final()], "grade": [grade(True, None, "Well argued.")]})
     go(store, run, stub)
-    answer(store, run, RIGHT); go(store, run, stub)          # probe right: straight to the topic
-    answer(store, run, RIGHT); go(store, run, stub)
-    answer(store, run, RIGHT); go(store, run, stub)
-    assert stub.calls == ["plan", "probe", "teach", "teach"]
-    assert [c for c, _ in seq(store, run)] == [PRE, TARGET, TARGET]
+    answer(store, run, RIGHT); go(store, run, stub)          # probe right: straight to the topic (held)
+    for _ in range(2):
+        quiz_me(store, run, stub)
+        answer(store, run, RIGHT); go(store, run, stub)
+    write(store, run, "A child inherits its parent's methods and may override one.", stub)
+    assert stub.calls == ["plan", "probe", "teach", "teach", "final", "grade"]     # the prerequisite was never explained
+    assert [c for c, _ in seq(store, run)] == [PRE, TARGET, TARGET, TARGET]
 
 
 def test_a_trusted_prerequisite_costs_no_probe_at_all(tmp_path):
@@ -180,7 +202,7 @@ def test_the_api_shows_the_plan_and_hides_the_probe_answer_key(tmp_path, monkeyp
 
     assert snap["status"] == "waiting_student"
     assert snap["progress"]["mode"] == "guided"
-    assert snap["progress"]["plan"] == {"target": TARGET, "prereqs": [PRE]}
+    assert snap["progress"]["plan"] == {"target": TARGET, "prereqs": [PRE], "subtopics": []}
     assert [row["concept"] for row in snap["progress"]["concepts"]] == [PRE, TARGET]
     [msg] = snap["messages"]
     assert msg["style"] == "probe" and msg["quiz"]["answered"] is None

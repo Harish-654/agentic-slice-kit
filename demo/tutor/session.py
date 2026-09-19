@@ -82,6 +82,17 @@ def open_gap(store: Store, run_id: str):
     return open_question(store, run_id, "doc_gap")
 
 
+def open_choice(store: Store, run_id: str):
+    """The "what next?" question after an explanation (guided sessions), if it is open."""
+    return open_question(store, run_id, "step_choice")
+
+
+def submit_choice(store: Store, qid: str, choice: str) -> str | None:
+    """One of the question's own options. Recorded under its own `who`, so it is never
+    mistaken for an answer to a quiz."""
+    return callback.answer(store, qid, choice, who="student_choice")
+
+
 def submit_gap(store: Store, qid: str, choice: str) -> str | None:
     """`choice` is "general" (teach it without the documents) or "skip". Recorded under
     its own `who` so it is never mistaken for an answer to a quiz."""

@@ -8,7 +8,7 @@ from demo.tutor.stub import Stub, lesson, plan, probe
 from slice import runner
 from slice.store import Store
 from tests.test_tutor import S, RIGHT, WRONG, find
-from tests.test_tutor_guided import PRE, TARGET, answer, guided
+from tests.test_tutor_guided import PRE, TARGET, answer, guided, quiz_me
 from tests.test_tutor_program import local_run
 
 # What the model actually wrote: `bark` is not indented inside the class, then it is called on an instance.
@@ -103,6 +103,7 @@ def test_a_probe_that_stays_broken_is_skipped_and_the_prerequisite_is_taught_ins
     assert store.history(run, "lesson")[0].payload["concept"] == PRE
     assert [v.payload["concept"] for v in store.history(run, "probe_skipped")] == [PRE]
 
+    quiz_me(store, run, stub)
     answer(store, run, RIGHT); go(store, run, stub)              # taught it: on to the topic, no re-probe
     assert stub.calls == ["plan", "probe", "probe", "teach", "teach"]
     assert store.history(run, "lesson")[1].payload["concept"] == TARGET

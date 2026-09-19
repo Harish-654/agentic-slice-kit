@@ -52,9 +52,19 @@ def code_lesson(text: str, *, cites=(CITE,), covered: bool = True) -> str:
     })
 
 
-def plan(prereqs=("classes-and-objects",), subtopics=("overriding",), target="") -> str:
-    """A PlanDraft: what the topic builds on, and its parts."""
+def plan(prereqs=("classes-and-objects",), subtopics=(), target="") -> str:
+    """A PlanDraft: what the topic builds on, and its parts. No parts by default, so the topic is
+    taught as one piece."""
     return json.dumps({"target": target, "prereqs": list(prereqs), "subtopics": list(subtopics)})
+
+
+def final(question: str = "Explain how a child class reuses and changes what its parent does.") -> str:
+    """The final check on a topic: one written question, graded against a rubric."""
+    return json.dumps({"question": question, "code": None,
+                       "rubric": ["the child inherits the parent's methods", "the child can override one"],
+                       "model_answer": "A child gets everything its parent defines and may replace a method.",
+                       "common_mistakes": [{"belief": "override-deletes-parent",
+                                            "sign": "says overriding removes the parent's method"}]})
 
 
 def probe(code: str | None = None, options=None) -> str:

@@ -11,4 +11,5 @@ export const STYLE_LABEL: Record<string, string> = {
   worked_example: 'Worked example',
   diagram: 'With a diagram',
   probe: 'Quick check',
+  final: 'Final check',
 }

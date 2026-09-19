@@ -72,7 +72,26 @@ export type NoticeMsg = {
   problem: boolean
   gap: Gap | null // set when the student is being asked what to do about a topic
 }
-export type Msg = LessonMsg | AnswerMsg | FeedbackMsg | EndMsg | NoticeMsg
+/** Guided sessions: what to do after an explanation. `chosen` is set once they have picked. */
+export type ChoicesMsg = {
+  id: string
+  role: 'assistant'
+  kind: 'choices'
+  options: Choice[]
+  chosen: Choice | null
+}
+/** The check that was held back with an explanation, shown when the student asks to be quizzed. */
+export type CardMsg = {
+  id: string
+  role: 'assistant'
+  kind: 'card'
+  concept: string
+  quiz: Quiz | null
+  open: OpenQ | null
+  code_task: CodeTaskQ | null
+}
+export type Choice = 'quiz' | 'example' | 'more_detail' | 'deeper' | 'skip' | 'stop'
+export type Msg = LessonMsg | AnswerMsg | FeedbackMsg | EndMsg | NoticeMsg | ChoicesMsg | CardMsg
 
 export type ConceptProgress = {
   concept: string
@@ -87,7 +106,7 @@ export type Progress = {
   threshold: number
   mode: 'quick' | 'guided'
   /** Guided sessions: what the topic builds on, worked out once at the start. */
-  plan: { target: string; prereqs: string[] } | null
+  plan: { target: string; prereqs: string[]; subtopics: string[] } | null
   answer_mode: AnswerMode // the type of the NEXT question
   interests: string[]
   use_docs: boolean
@@ -164,6 +183,7 @@ export const api = {
   setMode: (id: string, mode: AnswerMode) => call<Snapshot>(`/sessions/${id}/mode`, post({ mode })),
   setSource: (id: string, use_docs: boolean) => call<Snapshot>(`/sessions/${id}/source`, post({ use_docs })),
   fallback: (id: string, choice: 'general' | 'skip') => call<Snapshot>(`/sessions/${id}/fallback`, post({ choice })),
+  choose: (id: string, choice: Choice) => call<Snapshot>(`/sessions/${id}/choice`, post({ choice })),
   resume: (id: string) => call<Snapshot>(`/sessions/${id}/resume`, post({})),
 
   // The code coach
