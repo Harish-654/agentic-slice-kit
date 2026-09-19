@@ -2,7 +2,7 @@
 import json
 
 from demo.tutor import session
-from demo.tutor.stub import Stub, grade, lesson
+from demo.tutor.stub import Stub, grade, open_lesson
 from slice import llm
 from slice.budget import Budget
 from slice.store import Store
@@ -43,18 +43,26 @@ def test_the_repair_call_keeps_reasoning_off_too(monkeypatch, tmp_path):
 def test_the_tutor_asks_for_no_thinking_on_both_of_its_calls(tmp_path):
     store = Store(tmp_path / "r.db")
     run = session.start_session(store, "s1", ["mutable-defaults"])
-    stub = Stub({"teach": [lesson("a"), lesson("b")], "grade": [grade(True, None)]})
+    session.set_answer_mode(store, run, "text")
+    stub = Stub({"teach": [open_lesson("a"), open_lesson("b")], "grade": [grade(True, None)]})
     drive(store, run, stub)
     session.submit_text(store, session.open_quiz(store, run).id, "my answer")
     drive(store, run, stub)
     assert stub.calls == ["teach", "grade", "teach"] and stub.reasoning == [False, False, False]
 
 
-def test_the_teach_prompt_names_the_json_keys_it_expects():
+def test_every_prompt_that_wants_json_names_its_keys():
     """Measured: without the shape, models invented their own keys and every
-    lesson cost a repair call. The prompt must carry every key the schema needs."""
+    lesson cost a repair call. Each format prompt must carry every key it needs."""
     from demo.tutor.flow import _prompt
-    from demo.tutor.schema import Lesson, Quiz
-    text = _prompt("teach")
+    from demo.tutor.schema import Grade, Lesson, Mistake, OpenQuestion, Quiz
+    mcq, text = _prompt("format_mcq"), _prompt("format_open")
     for key in [*Lesson.model_fields, *Quiz.model_fields, "misconception", "text"]:
+        assert f'"{key}"' in mcq, key
+    for key in [*Lesson.model_fields, *OpenQuestion.model_fields, *Mistake.model_fields]:
         assert f'"{key}"' in text, key
+    # Measured: a small model put the written question under `quiz` (its natural word for
+    # "the check") on 3 of 3 tries until the prompt said, loudly, that `quiz` must be null.
+    assert "`quiz` is only for\nmultiple choice" in text and "MUST be `null`" in text
+    for key in Grade.model_fields:
+        assert f'"{key}"' in _prompt("grade"), key

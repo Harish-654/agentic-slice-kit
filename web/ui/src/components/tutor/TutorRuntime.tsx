@@ -7,6 +7,7 @@ import {
 } from '@assistant-ui/react'
 import { Button } from '@/components/ui/button'
 import type { Msg } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { useSession } from '@/lib/useSession'
 import { TutorContext, type TutorApi } from './context'
 
@@ -29,10 +30,12 @@ function convertMessage(m: Msg): ThreadMessageLike {
         role: 'assistant',
         status: done,
         content: [
-          call('lesson_header', { concept: m.concept, style: m.style, citations: m.citations }, true),
+          call('lesson_header', { concept: m.concept, style: m.style, source: m.source, citations: m.citations }, true),
           { type: 'text', text: m.explanation },
           ...(m.diagram ? [call('diagram', { source: m.diagram }, true)] : []),
-          call('quiz', { quiz: m.quiz }, m.quiz.answered ?? undefined),
+          m.quiz
+            ? call('quiz', { quiz: m.quiz }, m.quiz.answered ?? undefined)
+            : call('open_question', { open: m.open }, m.open?.answered ?? undefined),
         ],
       }
     case 'answer':
@@ -53,7 +56,7 @@ function convertMessage(m: Msg): ThreadMessageLike {
         id: m.id,
         role: 'assistant',
         status: done,
-        content: [call('notice', { text: m.text, problem: m.problem }, true)],
+        content: [call('notice', { text: m.text, problem: m.problem, gap: m.gap }, true)],
       }
   }
 }
@@ -69,7 +72,7 @@ export function TutorRuntime({
   onRestart: () => void
   children: (ready: boolean) => ReactNode
 }) {
-  const { snap, error, answerChoice, answerText, setMode } = useSession(sessionId)
+  const { snap, error, answerChoice, answerText, setMode, setSource, fallback, refresh } = useSession(sessionId)
   const status = snap?.status
   const canAnswer = status === 'waiting_student'
 
@@ -89,19 +92,41 @@ export function TutorRuntime({
     onNew,
   })
 
-  const api = useMemo<TutorApi | null>(
+  const student = snap?.student ?? ''
+  // A document change re-reads the session, so the panel shows what the server now holds.
+  const docs = useCallback(
+    (action: () => Promise<unknown>) =>
+      action().then(refresh, (e) => {
+        throw new Error(e instanceof ApiError ? e.message : 'Could not reach the tutor.')
+      }),
+    [refresh],
+  )
+
+  const tutor = useMemo<TutorApi | null>(
     () =>
       snap
-        ? { snap, canAnswer, answerChoice, answerText, setMode, restart: onRestart }
+        ? {
+            snap,
+            canAnswer,
+            answerChoice,
+            answerText,
+            setMode,
+            setSource,
+            fallback,
+            addDocs: (files) => docs(() => api.upload(student, files)),
+            addSample: () => docs(() => api.sample(student)),
+            removeDoc: (name) => docs(() => api.removeDoc(student, name)),
+            restart: onRestart,
+          }
         : null,
     // The actions close over the session id only; the snapshot is what changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [snap, canAnswer, onRestart],
+    [snap, canAnswer, onRestart, docs, student],
   )
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <TutorContext.Provider value={api}>
+      <TutorContext.Provider value={tutor}>
         {error && !snap ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
             <p className="text-sm text-destructive">{error}</p>
@@ -110,7 +135,7 @@ export function TutorRuntime({
             </Button>
           </div>
         ) : null}
-        {children(api !== null)}
+        {children(tutor !== null)}
       </TutorContext.Provider>
     </AssistantRuntimeProvider>
   )

@@ -6,7 +6,7 @@ import pytest
 from demo.tutor import learner, session
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
-from demo.tutor.stub import CITE, Stub, grade, lesson
+from demo.tutor.stub import CITE, Stub, grade, lesson, open_lesson
 from slice import callback, runner
 from slice.config import Settings
 from slice.records import RunState
@@ -22,7 +22,7 @@ NOTES = [Chunk("c1", "python-notes.md", 0, "Defaults are evaluated once.", 0.1)]
 WRONG, RIGHT = 0, 1                     # option indexes in the stub's quiz
 
 
-def find(store, query, k=4):
+def find(store, student, query):
     return NOTES
 
 
@@ -113,7 +113,8 @@ def test_the_learner_model_carries_into_the_next_session(tmp_path):
 def test_free_text_is_graded_by_the_model_and_tagged(tmp_path):
     store = Store(tmp_path / "r.db")
     run = session.start_session(store, "s1", ["mutable-defaults"])
-    stub = Stub({"teach": [lesson("a"), lesson("b")],
+    session.set_answer_mode(store, run, "text")             # the NEXT question is a written one
+    stub = Stub({"teach": [open_lesson("a"), open_lesson("b")],
                  "grade": [grade(False, "Default Is Copied", "Not quite.")]})
     drive(store, run, stub)
     q = session.open_quiz(store, run)
@@ -122,45 +123,9 @@ def test_free_text_is_graded_by_the_model_and_tagged(tmp_path):
 
     check = store.history(run, "check")[0].payload
     assert check["mode"] == "text" and check["misconception"] == "default-is-copied"
-    assert "Defaults are evaluated once." in stub.messages[1][1]["content"]   # graded on the notes
-
-
-def test_no_course_notes_means_ask_the_teacher_not_the_internet(tmp_path):
-    store = Store(tmp_path / "r.db")
-    run = session.start_session(store, "s1", ["decorators"])
-    stub = Stub({"teach": [lesson("from teacher", cites=())]})
-    nothing = lambda *a, **k: []
-
-    assert drive(store, run, stub, find=nothing) is RunState.AWAITING_EXPERT
-    assert stub.calls == []                              # nothing invented
-    [q] = callback.pending(store)
-    assert q.context["kind"] == "teacher_gap"
-
-    callback.answer(store, q.id, "A decorator wraps a function.", who="teacher")
-    assert drive(store, run, stub, find=nothing) is RunState.AWAITING_EXPERT
-    assert session.open_quiz(store, run) is not None     # now teaching, from the teacher's words
-
-
-def test_an_unanswered_teacher_gap_fails_with_a_reason(tmp_path):
-    store = Store(tmp_path / "r.db")
-    run = session.start_session(store, "s1", ["decorators"])
-    nothing = lambda *a, **k: []
-    drive(store, run, Stub({}), find=nothing)
-    [q] = callback.pending(store)
-    store.answer(q.id, "")
-    store.append(run, "expert_answer", {"answer": None, "source": "unresolved_no_expert"}, "system")
-    store.set_state(run, RunState.DRAFTING)
-
-    assert drive(store, run, Stub({}), find=nothing) is RunState.FAILED
-    assert store.latest(run, "failure")["kind"] == "no_source_material"
-
-
-def test_a_lesson_that_cites_nothing_it_was_given_is_refused(tmp_path):
-    store = Store(tmp_path / "r.db")
-    run = session.start_session(store, "s1", ["mutable-defaults"])
-    stub = Stub({"teach": [lesson("from the internet", cites=("wikipedia.org#0",))]})
-    assert drive(store, run, stub) is RunState.FAILED
-    assert store.latest(run, "failure")["kind"] == "ungrounded_lesson"
+    graded_on = stub.messages[1][1]["content"]
+    assert "the default list is created once" in graded_on                 # the rubric
+    assert "default-is-copied: says each call gets a fresh list" in graded_on
 
 
 def test_a_quiz_must_tag_every_distractor():

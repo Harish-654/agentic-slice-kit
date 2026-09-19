@@ -10,17 +10,31 @@ from pydantic import BaseModel
 CITE = "python-notes.md#0"
 
 
-def lesson(text: str, *, diagram: str | None = None, cites=(CITE,)) -> str:
+def lesson(text: str, *, diagram: str | None = None, cites=(CITE,), covered: bool = True) -> str:
     """A lesson whose quiz has one right answer (index 1) and two tagged wrong
     ones: 0 = default-is-copied, 2 = default-is-global."""
     return json.dumps({
-        "explanation": text, "citations": list(cites), "diagram": diagram,
+        "covered": covered, "explanation": text, "citations": list(cites), "diagram": diagram,
+        "open": None,
         "quiz": {"question": "What does f() return the second time it is called?",
                  "options": [{"text": "[1]", "misconception": "default-is-copied"},
                              {"text": "[1, 1]"},
                              {"text": "an error", "misconception": "default-is-global"}],
                  "correct": 1,
                  "why": "The default list is created once, when def runs, and shared."},
+    })
+
+
+def open_lesson(text: str, *, cites=(CITE,), covered: bool = True) -> str:
+    """The same topic asked as a written question, graded against a rubric."""
+    return json.dumps({
+        "covered": covered, "explanation": text, "citations": list(cites), "diagram": None,
+        "quiz": None,
+        "open": {"question": "Why does f() remember earlier calls?", "code": None,
+                 "rubric": ["the default list is created once", "later calls share it"],
+                 "model_answer": "The default is built when def runs, so every call reuses it.",
+                 "common_mistakes": [{"belief": "default-is-copied",
+                                      "sign": "says each call gets a fresh list"}]},
     })
 
 

@@ -5,7 +5,7 @@ import zipfile
 from demo.tutor import learner, learners, notes, session
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
-from demo.tutor.stub import Stub, grade, lesson
+from demo.tutor.stub import Stub, grade, lesson, open_lesson
 from slice import runner
 from slice.records import RunState
 from slice.retrieve import Chunk, split
@@ -53,7 +53,8 @@ def test_a_concept_with_no_history_still_starts_plain(tmp_path):
 def test_a_wrong_answer_the_grader_could_not_name_still_counts(tmp_path):
     store = Store(tmp_path / "r.db")
     run = session.start_session(store, "s1", ["mutable-defaults"])
-    stub = Stub({"teach": [lesson("a"), lesson("b")], "grade": [grade(False, None, "no")]})
+    session.set_answer_mode(store, run, "text")
+    stub = Stub({"teach": [open_lesson("a"), open_lesson("b")], "grade": [grade(False, None, "no")]})
     drive(store, run, stub)
     session.submit_text(store, session.open_quiz(store, run).id, "dunno")
     drive(store, run, stub)

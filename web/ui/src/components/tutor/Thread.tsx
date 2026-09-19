@@ -5,7 +5,8 @@ import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, QuizCard } from './cards'
+import { DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, QuizCard } from './cards'
+import type { LessonMsg } from '@/lib/api'
 import { useTutor } from './context'
 
 const TOOLS = {
@@ -13,6 +14,7 @@ const TOOLS = {
     lesson_header: LessonHeader,
     diagram: DiagramView,
     quiz: QuizCard,
+    open_question: OpenQuestionCard,
     feedback: FeedbackCard,
     end: EndCard,
     notice: NoticeCard,
@@ -81,20 +83,25 @@ const TextAnswer: FC = () => (
 
 const Footer: FC = () => {
   const { snap, canAnswer, setMode } = useTutor()
-  const text = snap.progress.answer_mode === 'text'
+  // The box follows the question ON SCREEN; the switch is about the NEXT one.
+  const lesson = snap.messages.findLast((m): m is LessonMsg => m.kind === 'lesson')
+  const writing = canAnswer && lesson?.open != null
+  const nextWritten = snap.progress.answer_mode === 'text'
   return (
     <div className="flex flex-col gap-3">
-      {canAnswer && text ? <TextAnswer /> : null}
-      {canAnswer && !text ? (
-        <p className="text-center text-sm text-muted-foreground">Pick an answer in the card above.</p>
+      {writing ? <TextAnswer /> : null}
+      {canAnswer && !writing ? (
+        <p className="text-center text-sm text-muted-foreground">
+          Pick an answer in the card above.{nextWritten ? ' Your next question will be in your own words.' : ''}
+        </p>
       ) : null}
       <div className="flex items-center justify-end gap-2">
         <Label htmlFor="own-words" className="text-sm font-normal text-muted-foreground">
-          Answer in my own words
+          Ask my next questions in my own words
         </Label>
         <Switch
           id="own-words"
-          checked={text}
+          checked={nextWritten}
           disabled={!canAnswer}
           onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')}
         />

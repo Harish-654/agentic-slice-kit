@@ -7,7 +7,15 @@ export type TutorApi = {
   canAnswer: boolean
   answerChoice: (choice: number) => void
   answerText: (text: string) => void
+  /** The type of the NEXT question; the one on screen is left alone. */
   setMode: (mode: 'mcq' | 'text') => void
+  setSource: (useDocs: boolean) => void
+  /** The answer to "that topic is not in your documents". */
+  fallback: (choice: 'general' | 'skip') => void
+  /** Document changes reject with a message that is safe to show. */
+  addDocs: (files: File[]) => Promise<void>
+  addSample: () => Promise<void>
+  removeDoc: (name: string) => Promise<void>
   restart: () => void
 }
 

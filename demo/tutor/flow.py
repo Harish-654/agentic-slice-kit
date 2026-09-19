@@ -4,8 +4,13 @@ DRAFTING teaches and sets a check, then suspends on the student.
 GATING reads the student's answer, updates the learner model, and hands back to
 DRAFTING: the back-edge that makes this an agent rather than a lesson plan.
 
+Where a lesson's facts come from is the student's choice. By default the model
+teaches from its own knowledge, shaped by what the student already knows. If they
+attached documents and switched "use my documents" on, it teaches only from those,
+cites them, and says so when they do not cover the topic.
+
 The rules that decide what happens next are in learner.py and here, in code.
-The model writes a lesson and, for free text, judges an answer. Nothing more.
+The model writes a lesson and, for typed answers, judges one. Nothing more.
 
 Nothing in slice/ changes for this to run.
 """
@@ -19,51 +24,61 @@ from types import SimpleNamespace
 from slice import callback
 from slice.llm import complete
 from slice.records import RunState
-from slice.retrieve import search
 
-from . import learner, learners
+from . import learner, learners, library
 from .schema import Grade, LearnerModel, Lesson
 
 STUDENT_WAIT_MINUTES = 24 * 60
 """A student who steps away for a meal has not abandoned the lesson. The kit's
 default wait is minutes, sized for an expert on call."""
 
-KIND_QUIZ, KIND_TEACHER = "student_quiz", "teacher_gap"
+KIND_QUIZ, KIND_GAP = "student_quiz", "doc_gap"
 
 _PROMPTS = Path(__file__).parent / "prompts"
 
 
-def _prompt(name: str) -> str:
-    return (_PROMPTS / f"{name}.md").read_text(encoding="utf-8")
+def _prompt(*names: str) -> str:
+    return "".join((_PROMPTS / f"{n}.md").read_text(encoding="utf-8") for n in names)
 
 
-def _notes(chunks, teacher_notes) -> str:
-    parts = [f"[{c.cite()}]\n{c.text}" for c in chunks]
-    parts += [f"[teacher-note]\n{t}" for t in teacher_notes]
-    return "\n\n".join(parts)
+def _notes(chunks) -> str:
+    return "\n\n".join(f"[{c.cite()}]\n{c.text}" for c in chunks)
 
 
-def build_teach_messages(concept, style, notes, interests, misconception,
-                         recent: bool = True) -> list[dict]:
-    user = [f"CONCEPT: {concept}", f"STYLE: {style}",
-            f"INTERESTS: {', '.join(interests) or 'none known'}"]
+def build_teach_messages(concept, style, source, want, profile, misconception,
+                         recent: bool = True, notes: str = "") -> list[dict]:
+    """`source` is "general" or "docs"; `want` is "mcq" or "text" (an open question)."""
+    system = _prompt("teach", f"source_{source}", "format_mcq" if want == "mcq" else "format_open")
+    user = [f"TOPIC: {concept}", f"STYLE: {style}", "STUDENT PROFILE:\n" + profile]
     if misconception:
-        when = "the student just chose" if recent else "this student held in an earlier session on this concept"
+        when = "the student just chose" if recent else "this student held in an earlier session on this topic"
         user.append(f"MISCONCEPTION {when}: {misconception}")
-    user.append("NOTES:\n\n" + notes)
-    return [{"role": "system", "content": _prompt("teach")},
+    if source == "docs":
+        user.append("NOTES:\n\n" + notes)
+    return [{"role": "system", "content": system},
             {"role": "user", "content": "\n\n".join(user)}]
 
 
-def build_grade_messages(quiz: dict, answer: str, notes: str) -> list[dict]:
+def build_grade_messages(open_q: dict, answer: str, notes: str) -> list[dict]:
+    parts = [f"QUESTION: {open_q['question']}"]
+    if open_q.get("code"):
+        parts.append("CODE:\n" + open_q["code"])
+    parts.append("RUBRIC:\n" + "\n".join(f"- {r}" for r in open_q["rubric"]))
+    parts.append("MODEL ANSWER: " + open_q["model_answer"])
+    if open_q["common_mistakes"]:
+        parts.append("COMMON MISTAKES:\n" + "\n".join(f"- {m['belief']}: {m['sign']}"
+                                                       for m in open_q["common_mistakes"]))
+    parts.append(f"STUDENT ANSWER: {answer}")
+    if notes:
+        parts.append("NOTES:\n\n" + notes)
     return [{"role": "system", "content": _prompt("grade")},
-            {"role": "user", "content": f"QUESTION: {quiz['question']}\n\n"
-                                        f"STUDENT ANSWER: {answer}\n\nNOTES:\n\n{notes}"}]
+            {"role": "user", "content": "\n\n".join(parts)}]
 
 
-def build_flow(call=complete, find=search):
+def build_flow(call=complete, find=library.search):
     """`call` and `find` are injected so the whole loop runs offline: no key, no
-    network, no embedding model. See demo/tutor/stub.py."""
+    network, no embedding model. See demo/tutor/stub.py. `find(store, student,
+    query)` returns the student's own chunks relevant to the query."""
 
     def _model(ctx) -> LearnerModel:
         return LearnerModel.model_validate(ctx.latest("learner_model"))
@@ -71,6 +86,10 @@ def build_flow(call=complete, find=search):
     def _end(ctx, reason: str) -> RunState:
         ctx.append("session_end", {"reason": reason}, produced_by="system")
         return RunState.COMPLETE
+
+    def _fail(ctx, kind: str, detail: str) -> RunState:
+        ctx.append("failure", {"kind": kind, "detail": detail}, produced_by="system")
+        return RunState.FAILED
 
     def _history(ctx, model, concept) -> tuple[int, str | None, bool]:
         """Wrong answers on this concept, this session AND earlier ones, and the
@@ -84,62 +103,75 @@ def build_flow(call=complete, find=search):
                and c.payload["misconception"]]
         return (wrong, now[-1], True) if now else (wrong, held, False)
 
+    def _gap(ctx, concept) -> str | None:
+        """What the student chose when their documents did not cover `concept`:
+        "general", "skip", or None if they were never asked. An unanswered
+        question that timed out counts as a skip: nobody replied is not consent."""
+        asked = [v.payload["id"] for v in ctx.history("question")
+                 if v.payload["context"].get("kind") == KIND_GAP
+                 and v.payload["context"]["concept"] == concept]
+        answers = {v.payload["question_id"]: v.payload["answer"]
+                   for v in ctx.history("expert_answer") if v.payload.get("question_id")}
+        for qid in reversed(asked):
+            if qid in answers:
+                return answers[qid] or "skip"
+        return None
+
+    def _doc_gap(ctx, concept) -> RunState:
+        callback.ask(ctx.store, ctx.run_id,
+                     f"Your documents do not cover {concept!r}.",
+                     {"kind": KIND_GAP, "concept": concept,
+                      "resume_state": RunState.DRAFTING.value},
+                     dataclasses.replace(ctx.settings, expert_timeout_minutes=STUDENT_WAIT_MINUTES))
+        return RunState.AWAITING_EXPERT
+
     def handle_drafting(ctx) -> RunState:
         model = _model(ctx)
-        concepts = ctx.latest("input")["concepts"]
+        inp = ctx.latest("input")
+        skipped = {c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
 
-        concept = learner.pick_concept(model, concepts)
+        concept = learner.pick_concept(model, [c for c in inp["concepts"] if c not in skipped])
         if concept is None:
-            return _end(ctx, "mastery")
+            return _end(ctx, "skipped" if skipped else "mastery")
         if len(ctx.history("check")) >= learner.MAX_CHECKS:
             return _end(ctx, "session_limit")
 
-        chunks = find(ctx.store, concept.replace("-", " "), k=4)
-        told = [v.payload["answer"] for v in ctx.history("expert_answer")
-                if v.payload.get("source") == "human_expert"
-                and v.payload.get("who") != "student"]
-        if not chunks and not told:
-            asked = [q for q in ctx.history("question")
-                     if q.payload["context"].get("kind") == KIND_TEACHER
-                     and q.payload["context"].get("concept") == concept]
-            if asked:                   # already asked; nobody answered
-                ctx.append("failure",
-                           {"kind": "no_source_material",
-                            "detail": f"No course notes cover {concept!r} and the teacher "
-                                      "did not answer. Not guessing from the internet."},
-                           produced_by="system")
-                return RunState.FAILED
-            callback.ask(ctx.store, ctx.run_id,
-                         f"The course notes do not cover {concept!r}. What should be "
-                         "taught about it?",
-                         {"kind": KIND_TEACHER, "concept": concept,
-                          "resume_state": RunState.DRAFTING.value}, ctx.settings)
-            return RunState.AWAITING_EXPERT
+        source, chunks = "general", []
+        if model.use_docs and _gap(ctx, concept) != "general":
+            chunks = find(ctx.store, inp["student_id"], concept.replace("-", " "))
+            if not chunks:
+                return _doc_gap(ctx, concept)
+            source = "docs"
 
+        want = model.answer_mode
         wrong, misconception, recent = _history(ctx, model, concept)
         style = learner.style_for(wrong)
         lesson = call(
             settings=ctx.settings, budget=ctx.budget,
-            messages=build_teach_messages(concept, style, _notes(chunks, told),
-                                          model.interests, misconception, recent),
+            messages=build_teach_messages(concept, style, source, want,
+                                          learner.profile(model, concept), misconception,
+                                          recent, _notes(chunks)),
             schema=Lesson, step="teach", reasoning=False,
         )
 
-        allowed = {c.cite() for c in chunks}
-        cited = [c for c in lesson.citations if c in allowed]
-        if not cited and not told:
-            ctx.append("failure",
-                       {"kind": "ungrounded_lesson",
-                        "detail": "The lesson cited none of the notes it was given."},
-                       produced_by="system")
-            return RunState.FAILED
+        if source == "docs" and not lesson.covered:
+            return _doc_gap(ctx, concept)
+        if (lesson.quiz is None) == (want == "mcq"):        # asked for one type, got the other
+            return _fail(ctx, "wrong_question_type",
+                         f"Asked for a {'multiple-choice' if want == 'mcq' else 'written'} "
+                         "question and the model wrote the other kind.")
 
-        payload = lesson.model_dump() | {"citations": cited, "concept": concept,
-                                         "style": style, "notes": _notes(chunks, told)}
+        allowed = {c.cite() for c in chunks}
+        cited = [c for c in lesson.citations if c in allowed] if source == "docs" else []
+        if source == "docs" and not cited:
+            return _fail(ctx, "ungrounded_lesson", "The lesson cited none of the notes it was given.")
+
+        payload = lesson.model_dump() | {"citations": cited, "concept": concept, "style": style,
+                                         "source": source, "notes": _notes(chunks)}
         ctx.append("lesson", payload, produced_by="agent:teach")
 
         # Suspend on the student. Waiting is a state, not this process's job.
-        callback.ask(ctx.store, ctx.run_id, lesson.quiz.question,
+        callback.ask(ctx.store, ctx.run_id, (lesson.quiz or lesson.open).question,
                      {"kind": KIND_QUIZ, "concept": concept,
                       "resume_state": RunState.GATING.value},
                      dataclasses.replace(ctx.settings,
@@ -153,19 +185,21 @@ def build_flow(call=complete, find=search):
             return _end(ctx, "student_left")
 
         given = json.loads(reply["answer"])
-        quiz, concept = lesson["quiz"], lesson["concept"]
+        concept = lesson["concept"]
 
-        if given["mode"] == "mcq":
+        if lesson["quiz"]:
+            quiz = lesson["quiz"]
             chosen = quiz["options"][given["choice"]]
             correct, mis = given["choice"] == quiz["correct"], chosen["misconception"]
-            feedback = quiz["why"]
+            feedback, stem = quiz["why"], quiz["question"]
         else:
             g = call(settings=ctx.settings, budget=ctx.budget,
-                     messages=build_grade_messages(quiz, given["text"], lesson["notes"]),
+                     messages=build_grade_messages(lesson["open"], given["text"], lesson["notes"]),
                      schema=Grade, step="grade", reasoning=False)
             correct, mis, feedback = g.correct, g.misconception, g.feedback
+            stem = lesson["open"]["question"]
 
-        model = learner.apply_check(_model(ctx), concept, correct, mis)
+        model = learner.apply_check(_model(ctx), concept, correct, mis, question=stem)
         ctx.append("check", {"concept": concept, "mode": given["mode"], "correct": correct,
                              "misconception": learner.slug(mis), "feedback": feedback},
                    produced_by="agent:gate" if given["mode"] == "text" else "system")

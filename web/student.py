@@ -12,8 +12,8 @@ remembered for next time.
 
     uvicorn web.student:app --port 8001
 
-Teacher notes are read from SLICE_NOTES (default corpus/python). Where the notes
-run out, the agent asks a teacher on web/expert.py instead of guessing.
+This page is the plain version: multiple choice, taught from the model's own
+knowledge. Documents and written answers are in the chat UI at /.
 """
 from __future__ import annotations
 
@@ -21,45 +21,32 @@ import html
 import os
 import re
 
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from demo.tutor import notes, session
+from demo.tutor import session
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
 from slice.config import settings
-from slice.retrieve import ingest
 from slice.store import Store
 from web import tutor_api
 
 DB = os.environ.get("SLICE_DB", "run.db")
-NOTES = os.environ.get("SLICE_NOTES", "corpus/python")
 UI_DIST = Path(__file__).parent / "ui" / "dist"
 C = "/classic"
 
 
-@asynccontextmanager
-async def lifespan(_app):
-    _store().close()            # convert and ingest the notes once, not on every request
-    yield
-
-
-app = FastAPI(title="Tutor", lifespan=lifespan)
+app = FastAPI(title="Tutor")
 classic = APIRouter(prefix=C)
 tutor_api.DB = DB
 
 
 def _store() -> Store:
-    s = Store(DB)
-    if os.path.isdir(NOTES):
-        notes.prepare(NOTES)               # PDF/Word -> .md, only what changed
-        ingest(s, NOTES)                   # idempotent: content-hash chunk ids
-    return s
+    return Store(DB)
 
 
 def _step(s: Store, run: str) -> None:
@@ -137,7 +124,8 @@ def start(student: str = Form(...), concepts: str = Form(...), interests: str = 
     s = _store()
     cs = [c.strip() for c in concepts.split(",") if c.strip()]
     ints = [i.strip() for i in interests.split(",") if i.strip()] or None
-    run = session.start_session(s, student.strip(), cs, ints)
+    run = session.start_session(s, student.strip(), cs, ints, use_docs=False)
+    session.set_answer_mode(s, run, "mcq")
     _step(s, run)
     return RedirectResponse(f"{C}/s/{run}", status_code=303)
 
@@ -185,40 +173,19 @@ def show(run: str):
     body += f"<div class='card'><b>Check yourself</b>{_rich(quiz['question'])}"
     if quiz.get("code"):
         body += f"<pre><code>{html.escape(quiz['code'].strip())}</code></pre>"
-    if model.answer_mode == "mcq":
-        opts = "".join(f"<label class='opt'><input type='radio' name='choice' value='{i}' required> "
-                       f"{html.escape(o['text'])}</label>" for i, o in enumerate(quiz["options"]))
-        body += f"<form method='post' action='{C}/s/{run}/answer'>{opts}<button>Answer</button></form>"
-        other, label = "text", "Answer in my own words instead"
-    else:
-        body += (f"<form method='post' action='{C}/s/{run}/answer'>"
-                 "<textarea name='text' required placeholder='Explain in your own words'></textarea>"
-                 "<button>Answer</button></form>")
-        other, label = "mcq", "Give me choices instead"
-    body += (f"<form method='post' action='{C}/s/{run}/mode'><input type='hidden' name='mode' "
-             f"value='{other}'><button>{label}</button></form></div>")
+    opts = "".join(f"<label class='opt'><input type='radio' name='choice' value='{i}' required> "
+                   f"{html.escape(o['text'])}</label>" for i, o in enumerate(quiz["options"]))
+    body += f"<form method='post' action='{C}/s/{run}/answer'>{opts}<button>Answer</button></form></div>"
     return _page(lesson["concept"], body + BUSY, mermaid=bool(lesson.get("diagram")))
 
 
 @classic.post("/s/{run}/answer")
-def answer(run: str, choice: int | None = Form(None), text: str = Form("")):
+def answer(run: str, choice: int = Form(...)):
     s = _store()
     q = session.open_quiz(s, run)
     if q is not None:
-        if choice is not None:
-            session.submit_mcq(s, q.id, choice)
-        elif text.strip():
-            session.submit_text(s, q.id, text.strip())
-        else:
-            return RedirectResponse(f"{C}/s/{run}", status_code=303)
+        session.submit_mcq(s, q.id, choice)
         _step(s, run)
-    return RedirectResponse(f"{C}/s/{run}", status_code=303)
-
-
-@classic.post("/s/{run}/mode")
-def mode(run: str, mode: str = Form(...)):
-    if mode in ("mcq", "text"):
-        session.set_answer_mode(_store(), run, mode)
     return RedirectResponse(f"{C}/s/{run}", status_code=303)
 
 
