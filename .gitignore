@@ -12,3 +12,4 @@ out/
 bakeoff_raw.txt
 corpus/**/.converted/
 web/ui/node_modules/
+uploads/

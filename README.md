@@ -6,12 +6,14 @@ Not a framework. Not a library. About 1,100 lines you are expected to read,
 understand, and edit — because the architecture is the thing being taught, and
 you cannot learn an architecture you have imported.
 
-> **Status: spine complete, and one worked agent on top of it. 100 tests — 97
+> **Status: spine complete, and one worked agent on top of it. 151 tests — 148
 > of them run with no key and no network; the three in
 > `tests/test_integration.py` need a live key and a reachable provider.**
 >
-> The worked agent is a tutor in [`demo/tutor/`](demo/tutor/) that teaches Python
-> from a teacher's own notes and remembers what each student gets wrong. Its spec
+> The worked agent is a tutor in [`demo/tutor/`](demo/tutor/). By default it teaches
+> from the model's own knowledge, shaped by what each student already knows and gets
+> wrong; if a student attaches their own documents and switches them on, it teaches
+> from those instead, and cites them. Its spec
 > is [`demo/tutor/TUTOR-SPEC.md`](demo/tutor/TUTOR-SPEC.md). Try it with
 > `python -m uvicorn web.student:app --port 8001`.
 

@@ -13,6 +13,14 @@ MAX_CHECKS = 8                  # quiz items per session
 HALF_LIFE_DAYS = 14             # how fast an unpractised concept slides back to START
 # Explanation styles, tried in order per concept. A wrong answer means the last
 # explanation did not land, and repeating it louder is the failure to avoid.
+# How far a RIGHT answer moves mastery towards 1, by how sure the student said they
+# were, and what a WRONG one multiplies it by. A lucky guess proves little; being sure
+# and wrong is the strongest sign of a belief worth fixing. "medium" is the old rule,
+# and is what an answer with no stated confidence counts as.
+GAIN = {"low": 0.3, "medium": 0.5, "high": 0.6}
+LOSS = {"low": 0.7, "medium": 0.5, "high": 0.3}
+UNKNOWN_LOSS = 0.85             # "I don't know" is honest, not a wrong belief: a small drop
+RECENT = 8                      # question stems remembered per concept
 STYLES = ("plain", "analogy", "worked_example", "diagram")
 
 
@@ -55,25 +63,58 @@ def carried(m: LearnerModel, concept: str) -> tuple[int, str | None]:
     return m.wrong_answers.get(concept, 0), (max(tags, key=tags.get) if tags else None)
 
 
+def level_for(mastery: float) -> str:
+    return "beginner" if mastery < 0.4 else "intermediate" if mastery < MASTERY else "advanced"
+
+
+def profile(m: LearnerModel, concept: str, now: float | None = None) -> str:
+    """What the tutor knows about this student on this topic, as prompt text.
+    This is what makes questions curated rather than predefined."""
+    eff = effective_mastery(m, concept, now)
+    wrong, _ = carried(m, concept)
+    lines = [f"LEVEL: {level_for(eff)} ({round(eff * 100)}% on this topic)",
+             f"WRONG ANSWERS ON THIS TOPIC SO FAR: {wrong}",
+             f"INTERESTS: {', '.join(m.interests) or 'none known'}"]
+    recent = m.recent_questions.get(concept, [])
+    if recent:
+        lines.append("QUESTIONS ALREADY ASKED (ask something different):\n"
+                     + "\n".join(f"- {q}" for q in recent))
+    return "\n".join(lines)
+
+
 def style_for(wrong_so_far: int) -> str:
     return STYLES[min(wrong_so_far, len(STYLES) - 1)]
 
 
 def apply_check(m: LearnerModel, concept: str, correct: bool,
-                misconception: str | None, now: float | None = None) -> LearnerModel:
-    """Right answers move mastery toward 1, wrong ones halve it - forgetting is
-    faster than learning, which is what a bad explanation costs."""
+                misconception: str | None, now: float | None = None,
+                question: str | None = None, confidence: str | None = None,
+                dont_know: bool = False) -> LearnerModel:
+    """Right answers move mastery toward 1, wrong ones cut it - forgetting is
+    faster than learning, which is what a bad explanation costs. How far depends on
+    how sure the student was; "I don't know" costs a little and names no belief."""
     old = effective_mastery(m, concept, now)     # from what they know now, not their peak
-    new = old + (1 - old) * 0.5 if correct else old * 0.5
+    sure = confidence or "medium"
+    if dont_know:
+        new = old * UNKNOWN_LOSS
+    elif correct:
+        new = old + (1 - old) * GAIN[sure]
+    else:
+        new = old * LOSS[sure]
     wrong = dict(m.wrong_answers)
     if not correct:
         wrong[concept] = wrong.get(concept, 0) + 1
     mis, per = dict(m.misconceptions), {k: dict(v) for k, v in m.concept_misconceptions.items()}
     tag = slug(misconception)
-    if not correct and tag:
-        mis[tag] = mis.get(tag, 0) + 1
-        per.setdefault(concept, {})[tag] = per.get(concept, {}).get(tag, 0) + 1
+    if not correct and tag and not dont_know:
+        weight = 2 if sure == "high" else 1          # a belief held with certainty counts double
+        mis[tag] = mis.get(tag, 0) + weight
+        per.setdefault(concept, {})[tag] = per.get(concept, {}).get(tag, 0) + weight
+    recent = m.recent_questions
+    if question:
+        recent = {**recent, concept: [*recent.get(concept, []), question[:140]][-RECENT:]}
     return m.model_copy(update={"mastery": {**m.mastery, concept: round(new, 4)},
+                                "recent_questions": recent,
                                 "misconceptions": mis, "concept_misconceptions": per,
                                 "wrong_answers": wrong,
                                 "last_seen": {**m.last_seen,

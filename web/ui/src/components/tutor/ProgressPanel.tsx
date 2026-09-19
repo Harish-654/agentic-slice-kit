@@ -1,11 +1,17 @@
-import type { FC } from 'react'
-import { RefreshCwIcon, SparklesIcon } from 'lucide-react'
+import { useRef, useState, type FC } from 'react'
+import { FileTextIcon, Loader2Icon, PlusIcon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { useTutor } from './context'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { humanize } from '@/lib/format'
 import type { ConceptProgress, Progress as ProgressData } from '@/lib/api'
+
+/** Untouched topics read 0%: the model's starting guess is not something the student earned. */
+const pct = (c: ConceptProgress) => (c.seen ? Math.round(c.mastery * 100) : 0)
 
 function state(c: ConceptProgress): { label: string; tone: string } {
   if (c.review_due) return { label: 'Review due', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
@@ -14,10 +20,109 @@ function state(c: ConceptProgress): { label: string; tone: string } {
   return { label: 'New', tone: 'bg-muted text-muted-foreground' }
 }
 
+/** The student's own documents, and the switch that makes them the source of truth. */
+const Documents: FC<{ docs: string[]; useDocs: boolean }> = ({ docs, useDocs }) => {
+  const { snap, addDocs, addSample, removeDoc, setSource } = useTutor()
+  const pick = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const idle = snap.status !== 'working' && snap.status !== 'stalled'
+
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your documents</p>
+      {docs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          None yet. Without documents, lessons come from the AI’s own knowledge.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {docs.map((d) => (
+            <li key={d} className="flex items-center justify-between gap-2 text-sm">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{d}</span>
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove ${d}`}
+                disabled={busy}
+                onClick={() => run(() => removeDoc(d))}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <input
+        ref={pick}
+        type="file"
+        multiple
+        accept=".md,.txt,.pdf,.docx"
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          e.target.value = ''
+          if (files.length) void run(() => addDocs(files))
+        }}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => pick.current?.click()}>
+          {busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlusIcon className="size-3.5" />}
+          Add documents
+        </Button>
+        {docs.length === 0 ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(addSample)}>
+            Try sample notes
+          </Button>
+        ) : null}
+      </div>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+
+      <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
+        <Label htmlFor="use-docs" className="flex-col items-start gap-0.5 text-sm font-medium leading-snug">
+          Use my documents as the source of truth
+          <span className="text-xs font-normal text-muted-foreground">
+            {docs.length === 0
+              ? 'Add a document to switch this on.'
+              : useDocs
+                ? 'Lessons come only from them, with citations.'
+                : 'Off: lessons come from general knowledge.'}
+          </span>
+        </Label>
+        <Switch
+          id="use-docs"
+          checked={useDocs}
+          disabled={docs.length === 0 || !idle}
+          onCheckedChange={setSource}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">Changes apply from the next lesson.</p>
+    </div>
+  )
+}
+
 /** The learner model, made visible: how well the student knows each concept and
  * which wrong beliefs they keep coming back to. */
 export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({ progress, student }) => {
-  const beliefs = progress.concepts.flatMap((c) => c.beliefs.map(([tag, n]) => ({ tag, n, concept: c.concept })))
+  const counts = new Map<string, number>()
+  for (const c of progress.concepts) for (const [tag, n] of c.beliefs) counts.set(tag, (counts.get(tag) ?? 0) + n)
+  const beliefs = [...counts].map(([tag, n]) => ({ tag, n })).sort((a, b) => b.n - a.n)
   return (
     <div className="flex flex-col gap-5 p-5">
       <div>
@@ -30,6 +135,10 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
           </p>
         ) : null}
       </div>
+
+      <Separator />
+
+      <Documents docs={progress.docs} useDocs={progress.use_docs} />
 
       <Separator />
 
@@ -46,15 +155,12 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
                   {s.label}
                 </span>
               </div>
-              <div className="relative">
-                <Progress value={c.seen ? Math.round(c.mastery * 100) : 0} aria-label={`${humanize(c.concept)} mastery`} />
-                {/* where "got it" starts */}
-                <span
-                  className="absolute -top-0.5 h-2.5 w-px bg-foreground/40"
-                  style={{ left: `${progress.threshold * 100}%` }}
-                  aria-hidden
-                />
-              </div>
+              <p className="flex items-baseline gap-1.5" aria-label={`${humanize(c.concept)}: ${pct(c)} percent`}>
+                <span className="text-2xl font-semibold tabular-nums">{pct(c)}%</span>
+                <span className="text-xs text-muted-foreground">
+                  {c.seen ? `of the way there (${Math.round(progress.threshold * 100)}% is “got it”)` : 'not started'}
+                </span>
+              </p>
             </div>
           )
         })}
@@ -68,7 +174,7 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
             <p className="text-xs text-muted-foreground">Wrong ideas your answers have pointed to. The tutor aims lessons at these.</p>
             <div className="flex flex-wrap gap-1.5">
               {beliefs.map((b) => (
-                <Badge key={`${b.concept}-${b.tag}`} variant="outline" className="font-normal">
+                <Badge key={b.tag} variant="outline" className="font-normal">
                   {humanize(b.tag)}
                   {b.n > 1 ? <span className="ml-1 text-muted-foreground">×{b.n}</span> : null}
                 </Badge>

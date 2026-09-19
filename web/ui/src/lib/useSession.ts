@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Snapshot } from './api'
+import { api, type Confidence, type Snapshot } from './api'
 
 const POLL_MS = 1000
-// Waiting on a teacher is slow, and a stalled run is resumed rather than watched.
-const LIVE = new Set(['working', 'waiting_teacher', 'stalled'])
+// A stalled run is resumed rather than watched; waiting on the student needs no polling.
+const LIVE = new Set(['working', 'stalled'])
 
 /**
  * One session, kept fresh. While the tutor is writing a lesson the page polls;
@@ -64,8 +64,12 @@ export function useSession(id: string | null) {
   return {
     snap,
     error,
-    answerChoice: (choice: number) => (id ? run(api.answerChoice(id, choice)) : undefined),
-    answerText: (text: string) => (id ? run(api.answerText(id, text)) : undefined),
+    answerChoice: (choice: number, c: Confidence) => (id ? run(api.answerChoice(id, choice, c)) : undefined),
+    answerText: (text: string, c: Confidence) => (id ? run(api.answerText(id, text, c)) : undefined),
+    dontKnow: () => (id ? run(api.dontKnow(id)) : undefined),
     setMode: (mode: 'mcq' | 'text') => (id ? run(api.setMode(id, mode)) : undefined),
+    setSource: (on: boolean) => (id ? run(api.setSource(id, on)) : undefined),
+    fallback: (choice: 'general' | 'skip') => (id ? run(api.fallback(id, choice)) : undefined),
+    refresh,
   }
 }

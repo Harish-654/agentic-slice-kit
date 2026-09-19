@@ -14,7 +14,6 @@ def client(tmp_path, monkeypatch, script):
     stub = Stub(script)
     for mod in (student, expert):
         monkeypatch.setattr(mod, "DB", db)
-    monkeypatch.setattr(student, "NOTES", "")           # no corpus folder: no embeddings
     monkeypatch.setattr(student, "build_flow",
                         lambda: build_flow(call=stub, find=lambda *a, **k: NOTES))
     monkeypatch.setattr(student, "settings", lambda: __import__("tests.test_tutor", fromlist=["S"]).S)
@@ -35,13 +34,10 @@ def test_a_student_learns_through_the_page(tmp_path, monkeypatch):
     r = c.post(f"/classic/s/{run}/answer", data={"choice": "0"})           # the wrong belief
     assert "Not quite" in r.text and "ANALOGY" in r.text           # feedback, then a different lesson
 
-    r = c.post(f"/classic/s/{run}/mode", data={"mode": "text"})            # the toggle
-    assert "<textarea" in r.text and "type='radio'" not in r.text
-
-    r = c.post(f"/classic/s/{run}/mode", data={"mode": "mcq"})
     c.post(f"/classic/s/{run}/answer", data={"choice": "1"})
     r = c.post(f"/classic/s/{run}/answer", data={"choice": "1"})
     assert "Session over" in r.text and "got the hang" in r.text
+    assert "own words" not in r.text            # the plain page never offers written answers
 
 
 def test_code_and_markup_render_safely(tmp_path, monkeypatch):

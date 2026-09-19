@@ -31,10 +31,12 @@ def previous_model(store: Store, student_id: str) -> LearnerModel | None:
 
 
 def start_session(store: Store, student_id: str, concepts: list[str],
-                  interests: list[str] | None = None) -> str:
+                  interests: list[str] | None = None, use_docs: bool | None = None) -> str:
     model = previous_model(store, student_id) or LearnerModel(student_id=student_id)
     if interests is not None:
         model = model.model_copy(update={"interests": interests})
+    if use_docs is not None:
+        model = model.model_copy(update={"use_docs": use_docs})
     run = store.create_run(DOMAIN, {"student_id": student_id})
     store.append(run, "input", {"student_id": student_id, "concepts": concepts}, "student")
     store.append(run, "learner_model", model.model_dump(), "system")
@@ -42,28 +44,59 @@ def start_session(store: Store, student_id: str, concepts: list[str],
     return run
 
 
-def set_answer_mode(store: Store, run_id: str, mode: str) -> None:
-    """The toggle. Stored on the model, so it is still there next session."""
+def _set(store: Store, run_id: str, **fields) -> None:
+    """A toggle. Stored on the model, so it is still there next session."""
     m = LearnerModel.model_validate(store.latest(run_id, "learner_model"))
-    m = m.model_copy(update={"answer_mode": mode})
+    m = m.model_copy(update=fields)
     store.append(run_id, "learner_model", m.model_dump(), "student")
     learners.save(store, m)
 
 
-def open_quiz(store: Store, run_id: str):
-    """The question the student is being asked right now, or None."""
+def set_answer_mode(store: Store, run_id: str, mode: str) -> None:
+    """The type of the NEXT question: "mcq" or "text". The one being asked stays as it is."""
+    _set(store, run_id, answer_mode=mode)
+
+
+def set_use_docs(store: Store, run_id: str, on: bool) -> None:
+    _set(store, run_id, use_docs=on)
+
+
+def open_question(store: Store, run_id: str, kind: str):
+    """What the student is being asked right now, of the given kind, or None."""
     for q in callback.pending(store, run_id):
-        if q.context.get("kind") == "student_quiz":
+        if q.context.get("kind") == kind:
             return q
     return None
 
 
-def submit_mcq(store: Store, qid: str, choice: int) -> str | None:
-    return callback.answer(store, qid, json.dumps({"mode": "mcq", "choice": choice}), who="student")
+def open_quiz(store: Store, run_id: str):
+    return open_question(store, run_id, "student_quiz")
 
 
-def submit_text(store: Store, qid: str, text: str) -> str | None:
-    return callback.answer(store, qid, json.dumps({"mode": "text", "text": text}), who="student")
+def open_gap(store: Store, run_id: str):
+    """The "your documents do not cover this" question, if that is what is open."""
+    return open_question(store, run_id, "doc_gap")
+
+
+def submit_gap(store: Store, qid: str, choice: str) -> str | None:
+    """`choice` is "general" (teach it without the documents) or "skip". Recorded under
+    its own `who` so it is never mistaken for an answer to a quiz."""
+    return callback.answer(store, qid, choice, who="student_gap")
+
+
+def submit_mcq(store: Store, qid: str, choice: int, confidence: str | None = None) -> str | None:
+    given = {"mode": "mcq", "choice": choice, "confidence": confidence}
+    return callback.answer(store, qid, json.dumps(given), who="student")
+
+
+def submit_text(store: Store, qid: str, text: str, confidence: str | None = None) -> str | None:
+    given = {"mode": "text", "text": text, "confidence": confidence}
+    return callback.answer(store, qid, json.dumps(given), who="student")
+
+
+def submit_unknown(store: Store, qid: str) -> str | None:
+    """"I don't know", for either kind of question. Honest, so it is never graded."""
+    return callback.answer(store, qid, json.dumps({"mode": "dont_know"}), who="student")
 
 
 def is_finished(store: Store, run_id: str) -> bool:

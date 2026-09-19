@@ -19,6 +19,7 @@ from xml.etree import ElementTree
 
 CONVERTED = ".converted"
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_MAX_XML = 20 * 1024 * 1024     # unpacked size we will parse
 _PIECE = 500                    # target characters per paragraph we emit
 
 
@@ -51,6 +52,8 @@ def _read_docx(path: Path) -> str:
     """A .docx is a zip of XML. Paragraph text is in <w:t> runs; heading styles
     become markdown headings so they survive as structure."""
     with zipfile.ZipFile(path) as z:
+        if z.getinfo("word/document.xml").file_size > _MAX_XML:      # a zip bomb, not a document
+            raise ValueError("document is too large once unpacked")
         root = ElementTree.fromstring(z.read("word/document.xml"))
     lines = []
     for para in root.iter(f"{_W}p"):
