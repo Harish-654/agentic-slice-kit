@@ -8,7 +8,15 @@ export type Status =
   | 'complete'
   | 'failed'
 
-export type Answered = { chosen: number | null; correct_index: number | null; correct: boolean }
+/** How sure the student says they are. It changes how far an answer moves their mastery. */
+export type Confidence = 'low' | 'medium' | 'high'
+
+export type Answered = {
+  chosen: number | null
+  correct_index: number | null
+  correct: boolean
+  dont_know?: boolean
+}
 
 export type Quiz = {
   question: string
@@ -42,6 +50,8 @@ export type FeedbackMsg = {
   text: string
   misconception: string | null
   via: 'mcq' | 'text'
+  confidence: Confidence | null
+  dont_know: boolean
 }
 export type EndMsg = { id: string; role: 'assistant'; kind: 'end'; reason: string }
 export type Gap = { concept: string; answer: 'general' | 'skip' | null }
@@ -114,8 +124,11 @@ export const api = {
   start: (student: string, concepts: string[], interests: string[], use_docs: boolean) =>
     call<{ id: string }>('/sessions', post({ student, concepts, interests, use_docs })),
   get: (id: string) => call<Snapshot>(`/sessions/${id}`),
-  answerChoice: (id: string, choice: number) => call<Snapshot>(`/sessions/${id}/answer`, post({ choice })),
-  answerText: (id: string, text: string) => call<Snapshot>(`/sessions/${id}/answer`, post({ text })),
+  answerChoice: (id: string, choice: number, confidence: Confidence) =>
+    call<Snapshot>(`/sessions/${id}/answer`, post({ choice, confidence })),
+  answerText: (id: string, text: string, confidence: Confidence) =>
+    call<Snapshot>(`/sessions/${id}/answer`, post({ text, confidence })),
+  dontKnow: (id: string) => call<Snapshot>(`/sessions/${id}/answer`, post({ dont_know: true })),
   setMode: (id: string, mode: 'mcq' | 'text') => call<Snapshot>(`/sessions/${id}/mode`, post({ mode })),
   setSource: (id: string, use_docs: boolean) => call<Snapshot>(`/sessions/${id}/source`, post({ use_docs })),
   fallback: (id: string, choice: 'general' | 'skip') => call<Snapshot>(`/sessions/${id}/fallback`, post({ choice })),

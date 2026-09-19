@@ -84,12 +84,19 @@ def submit_gap(store: Store, qid: str, choice: str) -> str | None:
     return callback.answer(store, qid, choice, who="student_gap")
 
 
-def submit_mcq(store: Store, qid: str, choice: int) -> str | None:
-    return callback.answer(store, qid, json.dumps({"mode": "mcq", "choice": choice}), who="student")
+def submit_mcq(store: Store, qid: str, choice: int, confidence: str | None = None) -> str | None:
+    given = {"mode": "mcq", "choice": choice, "confidence": confidence}
+    return callback.answer(store, qid, json.dumps(given), who="student")
 
 
-def submit_text(store: Store, qid: str, text: str) -> str | None:
-    return callback.answer(store, qid, json.dumps({"mode": "text", "text": text}), who="student")
+def submit_text(store: Store, qid: str, text: str, confidence: str | None = None) -> str | None:
+    given = {"mode": "text", "text": text, "confidence": confidence}
+    return callback.answer(store, qid, json.dumps(given), who="student")
+
+
+def submit_unknown(store: Store, qid: str) -> str | None:
+    """"I don't know", for either kind of question. Honest, so it is never graded."""
+    return callback.answer(store, qid, json.dumps({"mode": "dont_know"}), who="student")
 
 
 def is_finished(store: Store, run_id: str) -> bool:

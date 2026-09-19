@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -142,7 +143,13 @@ def _messages(versions) -> list[dict]:
         elif v.kind == "check" and lesson_payload and lesson_msg:
             given = reply or {}
             card = lesson_msg["quiz"] or lesson_msg["open"]
-            if given.get("mode") == "mcq":
+            key = lesson_payload["quiz"]["correct"] if lesson_payload["quiz"] else None
+            if given.get("mode") == "dont_know":
+                said = "I don't know"
+                # The answer is shown now: they have given up on it, and learning is the point.
+                card["answered"] = {"chosen": None, "correct_index": key, "correct": False,
+                                    "dont_know": True}
+            elif given.get("mode") == "mcq":
                 said = lesson_payload["quiz"]["options"][given["choice"]]["text"]
                 card["answered"] = {"chosen": given["choice"],
                                     "correct_index": lesson_payload["quiz"]["correct"],
@@ -154,7 +161,8 @@ def _messages(versions) -> list[dict]:
             out.append({"id": f"{v.seq}-feedback", "role": "assistant", "kind": "feedback",
                         "correct": p["correct"], "text": p["feedback"],
                         "misconception": p.get("misconception"),
-                        "via": given.get("mode", "mcq")})
+                        "via": "mcq" if lesson_payload["quiz"] else "text",
+                        "confidence": p.get("confidence"), "dont_know": p.get("dont_know", False)})
             lesson_msg = lesson_payload = reply = None
         elif v.kind == "session_end":
             out.append({"id": f"{v.seq}-end", "role": "assistant", "kind": "end",
@@ -214,6 +222,9 @@ class StartRequest(BaseModel):
 class AnswerRequest(BaseModel):
     choice: int | None = None
     text: str | None = Field(default=None, max_length=4000)
+    # How sure the student is. It changes how far the answer moves their mastery.
+    confidence: Literal["low", "medium", "high"] | None = None
+    dont_know: bool = False
 
 
 class ModeRequest(BaseModel):
@@ -258,12 +269,17 @@ def answer(run_id: str, req: AnswerRequest, s: Store = Depends(get_store)):
     if q is None or is_running(run_id):
         raise HTTPException(409, "This session is not waiting for an answer.")
     lesson = s.latest(run_id, "lesson")
-    if req.choice is not None and lesson["quiz"]:
+    typed = (req.text or "").strip()
+    if req.dont_know:
+        if req.choice is not None or typed:
+            raise HTTPException(422, "Give an answer, or say you do not know, not both.")
+        session.submit_unknown(s, q.id)
+    elif req.choice is not None and lesson["quiz"]:
         if not 0 <= req.choice < len(lesson["quiz"]["options"]):
             raise HTTPException(422, "That option does not exist.")
-        session.submit_mcq(s, q.id, req.choice)
-    elif (req.text or "").strip() and lesson["open"]:
-        session.submit_text(s, q.id, req.text.strip())
+        session.submit_mcq(s, q.id, req.choice, req.confidence)
+    elif typed and lesson["open"]:
+        session.submit_text(s, q.id, typed, req.confidence)
     else:
         raise HTTPException(422, "Choose an option." if lesson["quiz"] else "Write your answer.")
     _kick(run_id)

@@ -57,10 +57,12 @@ decides what comes next.
 
 ## 4. A complete walkthrough
 
-Rules first: mastery starts at 0.3; a right answer moves it halfway to 1; a wrong
-one halves it; 0.75 is mastered; explanation style advances one step for every
-wrong answer the student has ever given on that topic. "Answer in my own words"
-decides the type of the NEXT question.
+Rules first: mastery starts at 0.3 and 0.75 is mastered. A right answer moves it
+towards 1 by 0.3, 0.5 or 0.6 depending on whether the student said they were
+guessing, fairly sure or certain; a wrong answer multiplies it by 0.7, 0.5 or 0.3.
+"I don't know" multiplies it by 0.85 and names no belief. Explanation style
+advances one step for every wrong answer or "I don't know" on that topic.
+"Answer in my own words" decides the type of the NEXT question.
 
 ```
 Step 1 — start. Asha types her topics: "mutable defaults, list slicing". She adds
@@ -72,27 +74,33 @@ Step 2 — DRAFTING, general source. No retrieval. The prompt carries her profil
          after add(1)? The code is shown in the card. Options: "[2]" tagged
          default-is-copied; "[1, 2]" correct; "an error" tagged default-is-global.
          The lesson is labelled "General knowledge" and cites nothing.
-Step 3 — Asha picks "[2]". GATING: no model call, the option IS the diagnosis.
-         check {correct: false, misconception: "default-is-copied"}. mastery
-         0.3 -> 0.15. The page shows "Not quite", why, and "that option rests on
-         the idea: Default is copied" straight away, while the next lesson is written.
+Step 3 — Asha picks "[2]" and says she is certain. GATING: no model call, the option
+         IS the diagnosis. check {correct: false, misconception: "default-is-copied",
+         confidence: "high"}. Being certain and wrong is the strongest signal there
+         is: mastery 0.3 -> 0.09, and the belief counts double. The page shows "Not
+         quite", why, "that option rests on the idea: Default is copied", and "you
+         were certain, so this is the idea most worth fixing", straight away, while
+         the next lesson is written.
 Step 4 — back to DRAFTING. Style "analogy" (1 wrong). The profile now lists the
          question already asked, so the next one differs, and the prompt says "the
          student just chose: default-is-copied". Analogy from chess.
-Step 5 — Asha adds her teacher's notes and switches "use my documents as the source
+Step 5 — she answers the next one right, fairly sure: 0.09 -> 0.545. Then she adds her teacher's notes and switches "use my documents as the source
          of truth" on. From the next lesson: retrieval runs over HER documents only,
          the lesson is labelled "From your documents" and cites list-slicing.md#0.
 Step 6 — she switches on "ask my next questions in my own words" while a multiple-
          choice card is on screen. That card is left as it is and answered by
          choosing. The NEXT lesson carries a written question with a rubric kept on
-         the server; she types an answer, and a grading call judges it against the
-         rubric and her documents, naming a belief from the question's own list.
+         the server; she says how sure she is, types an answer, and a grading call
+         judges it against the rubric and her documents, naming a belief from the
+         question's own list. On the next written question she taps "I don't know":
+         no grading call, the model answer is shown, mastery x0.85, no belief recorded.
 Step 7 — a new session on "photosynthesis" with documents on. Nothing in her notes
          is close (distance 1.0 against a cutoff of 0.80), so the run waits and the
          page says "not in your documents" with two buttons. She picks "teach it from
          general knowledge"; the lesson is labelled General knowledge.
-Step 8 — 30 days later a mastered topic is due for review: effective mastery is
-         0.3 + (0.7875 - 0.3) * 0.5^(30/14) = 0.41, under 0.75.
+Step 8 — a second right answer, fairly sure, takes the topic to 0.7725: mastered. 30 days
+         later it is due for review: effective mastery is
+         0.3 + (0.7725 - 0.3) * 0.5^(30/14) = 0.41, under 0.75.
 ```## 5. Who is doing the thinking
 
 | step | the agent does it | the human does it | what the human loses if the agent does it |
@@ -102,7 +110,8 @@ Step 8 — 30 days later a mastered topic is due for review: effective mastery i
 | explaining a topic | yes (model) | | |
 | choosing the source of facts | | yes: attach documents, switch them on | knowing where a claim came from |
 | choosing the kind of question | | yes: the "own words" switch | recognising an answer is not the same as recalling it |
-| answering the check | | yes | |
+| answering the check, and saying how sure they are | | yes | |
+| giving up ("I don't know") | | yes | a guess that looks like knowledge |
 | naming the wrong belief | yes: from the option chosen (code), or from a rubric grader (model) | | |
 | deciding what happens when a topic is not in their documents | | yes: general knowledge or skip | a silent blend of sources |
 
@@ -213,7 +222,7 @@ fails there and is repaired or refused.
 | lesson | DRAFTING | each teach step, with its `source` |
 | question | the callback | each wait (the check, or "not in documents") |
 | expert_answer | the callback | each answer; the choice is kept under its own `who` |
-| check | GATING | each answer |
+| check | GATING | each answer, with the stated `confidence` and `dont_know` |
 | session_end / failure | flow, runner | once, with the reason |
 
 The `learners` table holds one row per student, the current model. The versions
@@ -247,6 +256,9 @@ student has answered.
 - **What:** multiple choice needs no model call: the option chosen is the
   diagnosis. A written answer goes to one grading call with the rubric, the model
   answer, the known mistakes and, in documents mode, the retrieved chunks.
+  "I don't know" is never graded: it shows the explanation or model answer and
+  costs a little mastery. How sure the student was scales how far any answer moves
+  mastery, and a belief held with certainty counts double.
 - **Reads / writes:** reads `lesson`, `expert_answer`; writes `check`,
   `learner_model`, the learners row, and the question stem so it is not asked again.
 - **Done when:** the model reflects the answer.
@@ -303,7 +315,9 @@ marks it "Review due".
 **Which constants here are architecture, and which are your domain's opinions:**
 architecture: the state names and the waiting pattern. Opinions: 0.75 mastery,
 0.3 start, the halving on a wrong answer, the 14-day half-life, 8 checks, the 0.80
-cutoff, 8 remembered questions per topic.
+cutoff, 8 remembered questions per topic, and the confidence weights (gain 0.3 / 0.5 /
+0.6, loss 0.7 / 0.5 / 0.3, "don't know" 0.85). An answer with no stated confidence
+counts as "fairly sure", which is the original 0.5 / 0.5 rule.
 
 ## 11. What this deliberately does not do
 
@@ -376,8 +390,10 @@ real accounts, before documents can be called private.
    ones cleanly, but a same-subject topic that is not covered scores 0.76 to 1.00,
    overlapping a covered topic phrased loosely (0.84). The `covered` flag is the
    second guard; a wrong "not in your documents" costs the student one click.
-3. Whether the mastery constants (halving, 0.75, a 14-day half-life) match how
-   students actually learn; they are guesses, not calibrated.
+3. Whether the mastery constants (the confidence weights, 0.75, a 14-day half-life) match
+   how students actually learn, and whether students report their confidence honestly.
+   They are guesses, not calibrated. A student who always taps "certain" is not fooled
+   by it, because a wrong certain answer costs the most, but nothing here measures it.
 
 ## 16. Claims to verify
 
@@ -387,6 +403,8 @@ real accounts, before documents can be called private.
 | a written question is valid on the first try | the same, for the open type | yes: 0 of 3 before the prompt named the key, 3 of 3 after, at 9-10s |
 | the coverage cutoff separates covered from unrelated topics | measure `Chunk.distance` on the sample notes | yes: 0.59-0.71 covered, 0.96+ unrelated; the middle overlaps (section 15) |
 | a written answer is graded and a belief named | grade one real answer | yes: 3.1s, named a belief |
+| one confident right answer cannot master a topic on its own | run the scoring from a fresh topic | yes: 0.30 -> 0.72, under 0.75 |
+| students report their confidence honestly | compare stated confidence with outcomes over real sessions | no |
 | turning reasoning off is accepted by both models | send it to the primary and the fallback | yes |
 | a broken Mermaid diagram is dropped, not shown as an error | render one that cannot parse | yes, in a browser |
 | one student's documents never reach another's lesson | search as two students | yes, with the real retriever |
@@ -398,7 +416,7 @@ real accounts, before documents can be called private.
 
 ## Before you call it done
 
-**The check that the pipeline works:** the offline suite (stubbed model, 138 tests),
+**The check that the pipeline works:** the offline suite (stubbed model, 148 tests),
 then the browser journey against the scripted model, then one short live session on a
 real key.
 **The adversarial one:** text in a document or a typed answer that says "ignore the

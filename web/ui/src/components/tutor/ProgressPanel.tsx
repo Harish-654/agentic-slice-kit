@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useTutor } from './context'
-import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { humanize } from '@/lib/format'
 import type { ConceptProgress, Progress as ProgressData } from '@/lib/api'
+
+/** Untouched topics read 0%: the model's starting guess is not something the student earned. */
+const pct = (c: ConceptProgress) => (c.seen ? Math.round(c.mastery * 100) : 0)
 
 function state(c: ConceptProgress): { label: string; tone: string } {
   if (c.review_due) return { label: 'Review due', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
@@ -118,7 +120,9 @@ const Documents: FC<{ docs: string[]; useDocs: boolean }> = ({ docs, useDocs }) 
 /** The learner model, made visible: how well the student knows each concept and
  * which wrong beliefs they keep coming back to. */
 export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({ progress, student }) => {
-  const beliefs = progress.concepts.flatMap((c) => c.beliefs.map(([tag, n]) => ({ tag, n, concept: c.concept })))
+  const counts = new Map<string, number>()
+  for (const c of progress.concepts) for (const [tag, n] of c.beliefs) counts.set(tag, (counts.get(tag) ?? 0) + n)
+  const beliefs = [...counts].map(([tag, n]) => ({ tag, n })).sort((a, b) => b.n - a.n)
   return (
     <div className="flex flex-col gap-5 p-5">
       <div>
@@ -151,15 +155,12 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
                   {s.label}
                 </span>
               </div>
-              <div className="relative">
-                <Progress value={c.seen ? Math.round(c.mastery * 100) : 0} aria-label={`${humanize(c.concept)} mastery`} />
-                {/* where "got it" starts */}
-                <span
-                  className="absolute -top-0.5 h-2.5 w-px bg-foreground/40"
-                  style={{ left: `${progress.threshold * 100}%` }}
-                  aria-hidden
-                />
-              </div>
+              <p className="flex items-baseline gap-1.5" aria-label={`${humanize(c.concept)}: ${pct(c)} percent`}>
+                <span className="text-2xl font-semibold tabular-nums">{pct(c)}%</span>
+                <span className="text-xs text-muted-foreground">
+                  {c.seen ? `of the way there (${Math.round(progress.threshold * 100)}% is “got it”)` : 'not started'}
+                </span>
+              </p>
             </div>
           )
         })}
@@ -173,7 +174,7 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
             <p className="text-xs text-muted-foreground">Wrong ideas your answers have pointed to. The tutor aims lessons at these.</p>
             <div className="flex flex-wrap gap-1.5">
               {beliefs.map((b) => (
-                <Badge key={`${b.concept}-${b.tag}`} variant="outline" className="font-normal">
+                <Badge key={b.tag} variant="outline" className="font-normal">
                   {humanize(b.tag)}
                   {b.n > 1 ? <span className="ml-1 text-muted-foreground">×{b.n}</span> : null}
                 </Badge>

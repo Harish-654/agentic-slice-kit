@@ -172,16 +172,23 @@ def test_the_root_serves_the_ui_or_says_how_to_build_it(tmp_path, monkeypatch):
 
 
 def test_the_committed_build_is_complete():
-    """The UI ships as built files so running the tutor needs no Node. A build
-    that is missing, or that points at files which were not committed with it,
-    would leave the page blank; this fails first."""
+    """The UI ships as built files so running the tutor needs no Node. A build that is missing,
+    that points at files which were not committed with it, or that git is ignoring, would leave
+    a fresh checkout with a blank page. Checking the disk is not enough (it once passed while
+    dist/ was gitignored), so this asks git what it actually tracks."""
     import re
+    import subprocess
     from pathlib import Path
     dist = Path(student.UI_DIST)
     index = (dist / "index.html").read_text()
     refs = re.findall(r'(?:src|href)="/(assets/[^"]+)"', index)
     assert refs, "index.html references no assets: was it built?"
     assert [r for r in refs if not (dist / r).is_file()] == []
+    tracked = set(subprocess.run(["git", "ls-files", "--", str(dist)], capture_output=True, text=True,
+                                 cwd=dist.parent.parent.parent).stdout.split())
+    needed = {f"web/ui/dist/{r}" for r in ["index.html", *refs]}
+    assert needed <= tracked, f"not tracked by git: {sorted(needed - tracked)}"
+
 
 
 SLICES = b"# List slicing\n\nAn index starts at 0. A slice items[1:3] excludes the stop index.\n"
@@ -300,3 +307,47 @@ def test_a_citation_shows_the_students_file_name_not_the_storage_prefix():
                "quiz": {"question": "q", "code": None, "options": [{"text": "a"}, {"text": "b"}], "correct": 0}}
     msg = tutor_api._lesson_message(SimpleNamespace(seq=1, payload=payload))
     assert msg["citations"] == ["mutable-defaults.md#0"]
+
+
+def test_confidence_and_dont_know_reach_the_page(tmp_path, monkeypatch):
+    c, _ = make(tmp_path, monkeypatch, {"teach": [lesson("a"), lesson("b"), lesson("c")]})
+    run = start(c)
+    settle(c, run)
+
+    assert c.post(f"/api/sessions/{run}/answer", json={"choice": WRONG, "confidence": "certain"}).status_code == 422
+    assert c.post(f"/api/sessions/{run}/answer", json={"choice": WRONG, "dont_know": True}).status_code == 422
+    c.post(f"/api/sessions/{run}/answer", json={"choice": WRONG, "confidence": "high"})
+    snap = settle(c, run)
+    feedback = snap["messages"][2]
+    assert feedback["confidence"] == "high" and feedback["dont_know"] is False
+
+    c.post(f"/api/sessions/{run}/answer", json={"dont_know": True})
+    snap = settle(c, run)
+    card = snap["messages"][3]["quiz"]
+    said, feedback = snap["messages"][4], snap["messages"][5]
+    assert said["text"] == "I don't know"
+    assert card["answered"] == {"chosen": None, "correct_index": 1, "correct": False, "dont_know": True}
+    assert feedback["dont_know"] is True and feedback["misconception"] is None and feedback["confidence"] is None
+    assert snap["messages"][-1]["style"] == "worked_example"               # two lessons that did not land
+
+
+def test_a_written_answer_carries_its_confidence_and_can_be_given_up_on(tmp_path, monkeypatch):
+    c, _ = make(tmp_path, monkeypatch, {"teach": [lesson("a"), open_lesson("b"), open_lesson("c"), open_lesson("d")],
+                                        "grade": [grade(True, None, "Yes.")]})
+    run = start(c, concepts=["x", "y", "z"])          # several topics, so one being learnt does not end it
+    settle(c, run)
+    c.post(f"/api/sessions/{run}/mode", json={"mode": "text"})             # the NEXT question is written
+    c.post(f"/api/sessions/{run}/answer", json={"choice": RIGHT, "confidence": "medium"})
+    snap = settle(c, run)
+    assert snap["messages"][-1]["open"] is not None
+
+    c.post(f"/api/sessions/{run}/answer", json={"text": "the default is built once", "confidence": "low"})
+    snap = settle(c, run)
+    feedback = snap["messages"][-2]
+    assert feedback["via"] == "text" and feedback["confidence"] == "low" and feedback["correct"] is True
+
+    c.post(f"/api/sessions/{run}/answer", json={"dont_know": True})
+    snap = settle(c, run)
+    card = snap["messages"][-4]["open"]
+    assert card["answered"]["dont_know"] is True and card["answered"]["correct_index"] is None
+    assert "A good answer:" in snap["messages"][-2]["text"]                # the model answer, shown once given up

@@ -6,7 +6,7 @@ Not a framework. Not a library. About 1,100 lines you are expected to read,
 understand, and edit — because the architecture is the thing being taught, and
 you cannot learn an architecture you have imported.
 
-> **Status: spine complete, and one worked agent on top of it. 141 tests — 138
+> **Status: spine complete, and one worked agent on top of it. 151 tests — 148
 > of them run with no key and no network; the three in
 > `tests/test_integration.py` need a live key and a reachable provider.**
 >

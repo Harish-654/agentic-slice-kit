@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react'
-import { BookOpenIcon, CheckCircle2Icon, FileTextIcon, InfoIcon, LightbulbIcon, SparklesIcon, TriangleAlertIcon, XCircleIcon } from 'lucide-react'
+import { BookOpenIcon, CheckCircle2Icon, FileTextIcon, HelpCircleIcon, InfoIcon, LightbulbIcon, SparklesIcon, TriangleAlertIcon, XCircleIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { humanize, STYLE_LABEL } from '@/lib/format'
-import type { Answered, Gap, OpenQ, Quiz } from '@/lib/api'
+import type { Answered, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
 import { useTutor } from './context'
 
 /** Concept, how it is being taught, and where the facts came from. The source is always
@@ -101,11 +101,60 @@ function Code({ children }: { children: string }) {
 
 const LETTERS = 'ABCDE'
 
+const LEVELS: { value: Confidence; label: string }[] = [
+  { value: 'low', label: 'Just guessing' },
+  { value: 'medium', label: 'Fairly sure' },
+  { value: 'high', label: 'Certain' },
+]
+
+/** How sure the student is. Asked every time and never defaulted: a default would be an answer
+ * they did not give. Together with "I don't know", it sits inside the question it belongs to. */
+function AnswerActions({ withSubmit }: { withSubmit: boolean }) {
+  const { picked, confidence, setConfidence, submitChoice, dontKnow } = useTutor()
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t pt-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2" role="radiogroup" aria-label="How sure are you?">
+        <span className="text-sm text-muted-foreground">How sure are you?</span>
+        <div className="inline-flex rounded-lg border p-0.5">
+          {LEVELS.map((l) => (
+            <button
+              key={l.value}
+              type="button"
+              role="radio"
+              aria-checked={confidence === l.value}
+              onClick={() => setConfidence(l.value)}
+              className={cn(
+                'rounded-md px-3 py-1 text-sm transition-colors',
+                confidence === l.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <Button type="button" variant="outline" size="sm" onClick={dontKnow}>
+          I don’t know
+        </Button>
+        {withSubmit ? (
+          <Button type="button" disabled={picked === null || confidence === null} onClick={submitChoice}>
+            Submit answer
+          </Button>
+        ) : null}
+      </div>
+      {withSubmit ? (
+        <p className="text-xs text-muted-foreground">Pick an option, say how sure you are, then submit.</p>
+      ) : null}
+    </div>
+  )
+}
+
 /** The check. Multiple choice by default; in text mode the answer goes in the box
  * below, so the card only shows the question. */
 export const QuizCard: ToolCallMessagePartComponent = ({ args }) => {
   const { quiz } = args as { quiz: Quiz }
-  const { canAnswer, answerChoice } = useTutor()
+  const { canAnswer, picked, setPicked } = useTutor()
   const answered: Answered | null = quiz.answered
   const open = !answered && canAnswer
 
@@ -128,12 +177,14 @@ export const QuizCard: ToolCallMessagePartComponent = ({ args }) => {
                   type="button"
                   variant="outline"
                   disabled={!open}
-                  onClick={() => answerChoice(i)}
+                  onClick={() => setPicked(i)}
+                  aria-pressed={open && picked === i}
                   className={cn(
                     'h-auto w-full justify-start gap-3 whitespace-normal px-3 py-2.5 text-left font-normal',
                     answered && isRight && 'border-emerald-500 bg-emerald-500/10 disabled:opacity-100',
                     answered && isChosen && !isRight && 'border-destructive bg-destructive/10 disabled:opacity-100',
                     answered && !isRight && !isChosen && 'disabled:opacity-45',
+                    open && picked === i && 'border-foreground bg-muted ring-2 ring-foreground/20',
                   )}
                 >
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-medium">
@@ -151,6 +202,7 @@ export const QuizCard: ToolCallMessagePartComponent = ({ args }) => {
             )
           })}
         </ul>
+        {open ? <AnswerActions withSubmit /> : null}
       </CardContent>
     </Card>
   )
@@ -159,6 +211,7 @@ export const QuizCard: ToolCallMessagePartComponent = ({ args }) => {
 /** A question the student answers by typing. The answer box lives in the thread's footer. */
 export const OpenQuestionCard: ToolCallMessagePartComponent = ({ args }) => {
   const { open } = args as { open: OpenQ }
+  const { canAnswer } = useTutor()
   return (
     <Card className="mt-4 gap-3 py-4">
       <CardContent className="px-4">
@@ -168,40 +221,64 @@ export const OpenQuestionCard: ToolCallMessagePartComponent = ({ args }) => {
         <p className="font-medium leading-snug">{open.question}</p>
         {open.code ? <Code>{open.code}</Code> : null}
         <p className="mt-3 text-sm text-muted-foreground">
-          {open.answered ? 'You answered in your own words.' : 'Write your answer in the box below.'}
+          {open.answered?.dont_know
+            ? 'You said you did not know.'
+            : open.answered
+              ? 'You answered in your own words.'
+              : 'Write your answer in the box below.'}
         </p>
+        {!open.answered && canAnswer ? <AnswerActions withSubmit={false} /> : null}
       </CardContent>
     </Card>
   )
 }
 
-/** Right or wrong, why, and, when wrong, the belief the chosen option stood for. */
+const SURE: Record<Confidence, string> = { low: 'just guessing', medium: 'fairly sure', high: 'certain' }
+
+/** Right or wrong, why, and what how sure they were says about it. Being certain and wrong is
+ * the most useful thing to learn from; a right answer that was a guess has not been learnt yet. */
 export const FeedbackCard: ToolCallMessagePartComponent = ({ args }) => {
-  const { correct, text, misconception, via } = args as {
+  const { correct, text, misconception, via, confidence, dont_know } = args as {
     correct: boolean
     text: string
     misconception: string | null
     via: 'mcq' | 'text'
+    confidence: Confidence | null
+    dont_know: boolean
   }
+  const note = dont_know
+    ? null
+    : !correct && confidence === 'high'
+      ? 'You were certain, so this is the idea most worth fixing.'
+      : correct && confidence === 'low'
+        ? 'Right, though you were only guessing, so it will come back for more practice.'
+        : null
   return (
     <div
       className={cn(
         'flex gap-3 rounded-lg border p-4',
-        correct ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-amber-500/40 bg-amber-500/5',
+        dont_know ? 'bg-muted/40' : correct ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-amber-500/40 bg-amber-500/5',
       )}
     >
-      {correct ? (
+      {dont_know ? (
+        <HelpCircleIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+      ) : correct ? (
         <CheckCircle2Icon className="mt-0.5 size-5 shrink-0 text-emerald-600" />
       ) : (
         <LightbulbIcon className="mt-0.5 size-5 shrink-0 text-amber-600" />
       )}
       <div className="text-sm leading-relaxed">
-        <p className="font-semibold">{correct ? 'Correct' : 'Not quite'}</p>
+        <p className="font-semibold">{dont_know ? 'No problem' : correct ? 'Correct' : 'Not quite'}</p>
         <p className="mt-0.5">{text}</p>
-        {!correct && misconception ? (
+        {!correct && !dont_know && misconception ? (
           <p className="mt-2 text-muted-foreground">
             {via === 'text' ? 'Your answer points to the idea:' : 'That option rests on the idea:'}{' '}
             <span className="font-medium text-foreground">{humanize(misconception)}</span>
+          </p>
+        ) : null}
+        {confidence && !dont_know ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            You said you were {SURE[confidence]}.{note ? ` ${note}` : ''}
           </p>
         ) : null}
       </div>

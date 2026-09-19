@@ -186,8 +186,15 @@ def build_flow(call=complete, find=library.search):
 
         given = json.loads(reply["answer"])
         concept = lesson["concept"]
+        unknown = given["mode"] == "dont_know"
+        confidence = given.get("confidence")
 
-        if lesson["quiz"]:
+        if unknown:                  # no grading call: nothing was said to grade
+            correct, mis = False, None
+            stem = (lesson["quiz"] or lesson["open"])["question"]
+            teach = lesson["quiz"]["why"] if lesson["quiz"] else "A good answer: " + lesson["open"]["model_answer"]
+            feedback = "That is fine, not knowing is useful to know. " + teach
+        elif lesson["quiz"]:
             quiz = lesson["quiz"]
             chosen = quiz["options"][given["choice"]]
             correct, mis = given["choice"] == quiz["correct"], chosen["misconception"]
@@ -199,9 +206,11 @@ def build_flow(call=complete, find=library.search):
             correct, mis, feedback = g.correct, g.misconception, g.feedback
             stem = lesson["open"]["question"]
 
-        model = learner.apply_check(_model(ctx), concept, correct, mis, question=stem)
+        model = learner.apply_check(_model(ctx), concept, correct, mis, question=stem,
+                                    confidence=confidence, dont_know=unknown)
         ctx.append("check", {"concept": concept, "mode": given["mode"], "correct": correct,
-                             "misconception": learner.slug(mis), "feedback": feedback},
+                             "misconception": learner.slug(mis), "feedback": feedback,
+                             "confidence": confidence, "dont_know": unknown},
                    produced_by="agent:gate" if given["mode"] == "text" else "system")
         ctx.append("learner_model", model.model_dump(), produced_by="system")
         learners.save(ctx.store, model)

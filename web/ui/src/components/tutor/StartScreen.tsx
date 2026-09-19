@@ -106,8 +106,11 @@ export const StartScreen: FC<{
                 accept=".md,.txt,.pdf,.docx"
                 className="hidden"
                 onChange={(e) => {
-                  setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])
+                  // Read the files BEFORE clearing the input: a state updater runs after this
+                  // handler returns, by which time the cleared input would hand back nothing.
+                  const chosen = Array.from(e.target.files ?? [])
                   e.target.value = ''
+                  setFiles((f) => [...f, ...chosen])
                 }}
               />
               <div className="flex flex-wrap gap-2">

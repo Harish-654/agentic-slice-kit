@@ -65,24 +65,31 @@ const Working: FC = () => {
   )
 }
 
-/** The answer box, for students who chose to answer in their own words. */
-const TextAnswer: FC = () => (
-  <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border bg-muted/30 p-2 focus-within:border-foreground/30">
-    <ComposerPrimitive.Input
-      placeholder="Explain it in your own words…"
-      className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-6 outline-none placeholder:text-muted-foreground/60"
-      rows={1}
-      autoFocus
-      aria-label="Your answer"
-    />
-    <ComposerPrimitive.Send render={<Button type="button" size="icon" className="size-9 rounded-full" aria-label="Send answer" />}>
-      <ArrowUpIcon className="size-4" />
-    </ComposerPrimitive.Send>
-  </ComposerPrimitive.Root>
-)
+/** The answer box, for a question the student writes an answer to. Enter and Send both wait
+ * until they have said how sure they are. */
+const TextAnswer: FC = () => {
+  const { confidence } = useTutor()
+  return (
+    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border bg-muted/30 p-2 focus-within:border-foreground/30">
+      <ComposerPrimitive.Input
+        placeholder="Explain it in your own words…"
+        className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-6 outline-none placeholder:text-muted-foreground/60"
+        rows={1}
+        autoFocus
+        aria-label="Your answer"
+        submitMode={confidence ? 'enter' : 'none'}
+      />
+      <ComposerPrimitive.Send
+        render={<Button type="button" size="icon" className="size-9 rounded-full" aria-label="Send answer" disabled={!confidence} />}
+      >
+        <ArrowUpIcon className="size-4" />
+      </ComposerPrimitive.Send>
+    </ComposerPrimitive.Root>
+  )
+}
 
 const Footer: FC = () => {
-  const { snap, canAnswer, setMode } = useTutor()
+  const { snap, canAnswer, setMode, confidence } = useTutor()
   // The box follows the question ON SCREEN; the switch is about the NEXT one.
   const lesson = snap.messages.findLast((m): m is LessonMsg => m.kind === 'lesson')
   const writing = canAnswer && lesson?.open != null
@@ -90,10 +97,13 @@ const Footer: FC = () => {
   return (
     <div className="flex flex-col gap-3">
       {writing ? <TextAnswer /> : null}
-      {canAnswer && !writing ? (
-        <p className="text-center text-sm text-muted-foreground">
-          Pick an answer in the card above.{nextWritten ? ' Your next question will be in your own words.' : ''}
+      {writing ? (
+        <p className="text-xs text-muted-foreground">
+          {confidence ? 'Write your answer, then press Enter.' : 'Say how sure you are, in the question above, to unlock this box.'}
         </p>
+      ) : null}
+      {canAnswer && !writing && nextWritten ? (
+        <p className="text-center text-xs text-muted-foreground">Your next question will be in your own words.</p>
       ) : null}
       <div className="flex items-center justify-end gap-2">
         <Label htmlFor="own-words" className="text-sm font-normal text-muted-foreground">
