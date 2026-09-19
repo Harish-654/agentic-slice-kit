@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch, script):
 def test_a_student_learns_through_the_page(tmp_path, monkeypatch):
     c = client(tmp_path, monkeypatch, {"teach": [lesson("PLAIN", diagram="graph TD; A-->B"),
                                                  lesson("ANALOGY"), lesson("WORKED")]})
-    r = c.post("/start", data={"student": "asha", "concepts": "mutable-defaults"})
+    r = c.post("/classic/start", data={"student": "asha", "concepts": "mutable-defaults"})
     assert "PLAIN" in r.text and "type='radio'" in r.text        # a lesson, and MCQ by default
     assert "class='mermaid'" in r.text                            # the diagram is drawn
     run = str(r.url).rsplit("/", 1)[1]
@@ -32,15 +32,15 @@ def test_a_student_learns_through_the_page(tmp_path, monkeypatch):
     # not for experts: the quiz must not appear on the teacher page
     assert "Nothing waiting" in TestClient(expert.app).get("/").text
 
-    r = c.post(f"/s/{run}/answer", data={"choice": "0"})           # the wrong belief
+    r = c.post(f"/classic/s/{run}/answer", data={"choice": "0"})           # the wrong belief
     assert "Not quite" in r.text and "ANALOGY" in r.text           # feedback, then a different lesson
 
-    r = c.post(f"/s/{run}/mode", data={"mode": "text"})            # the toggle
+    r = c.post(f"/classic/s/{run}/mode", data={"mode": "text"})            # the toggle
     assert "<textarea" in r.text and "type='radio'" not in r.text
 
-    r = c.post(f"/s/{run}/mode", data={"mode": "mcq"})
-    c.post(f"/s/{run}/answer", data={"choice": "1"})
-    r = c.post(f"/s/{run}/answer", data={"choice": "1"})
+    r = c.post(f"/classic/s/{run}/mode", data={"mode": "mcq"})
+    c.post(f"/classic/s/{run}/answer", data={"choice": "1"})
+    r = c.post(f"/classic/s/{run}/answer", data={"choice": "1"})
     assert "Session over" in r.text and "got the hang" in r.text
 
 
@@ -50,7 +50,7 @@ def test_code_and_markup_render_safely(tmp_path, monkeypatch):
     raw["quiz"]["question"] = "What does it print?"
     raw["quiz"]["code"] = "print(x == [1])"
     c = client(tmp_path, monkeypatch, {"teach": [json.dumps(raw)]})
-    r = c.post("/start", data={"student": "asha", "concepts": "x"})
+    r = c.post("/classic/start", data={"student": "asha", "concepts": "x"})
     assert "<pre><code>x = [1]</code></pre>" in r.text            # fence, language tag dropped
     assert "<pre><code>print(x == [1])</code></pre>" in r.text    # the quiz's own code is visible
     assert "<code>is</code>" in r.text and "&lt;b&gt;" in r.text  # inline code; markup escaped

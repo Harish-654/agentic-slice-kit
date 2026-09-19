@@ -1,10 +1,14 @@
 """
-The page a student learns on: a lesson, a diagram when one helps, then a short
-check. The check is multiple choice by default; "answer in my own words" is a
-toggle, remembered for next time.
+The tutor's web app. Three things are served from here:
 
-Server-rendered like web/expert.py. The one script is Mermaid, loaded only to
-draw a diagram when a lesson has one.
+    /          the chat UI (web/ui, built to web/ui/dist and committed, so running
+               this needs only Python)
+    /api/...   the JSON it talks to (web/tutor_api.py)
+    /classic   the original server-rendered page: a lesson, a check, no JavaScript
+               to load. Kept as a fallback for when the bundle cannot.
+
+The check is multiple choice by default; "answer in my own words" is a toggle,
+remembered for next time.
 
     uvicorn web.student:app --port 8001
 
@@ -17,8 +21,12 @@ import html
 import os
 import re
 
-from fastapi import FastAPI, Form
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import APIRouter, FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from demo.tutor import notes, session
 from demo.tutor.flow import build_flow
@@ -27,10 +35,23 @@ from slice import runner
 from slice.config import settings
 from slice.retrieve import ingest
 from slice.store import Store
+from web import tutor_api
 
 DB = os.environ.get("SLICE_DB", "run.db")
 NOTES = os.environ.get("SLICE_NOTES", "corpus/python")
-app = FastAPI(title="Tutor")
+UI_DIST = Path(__file__).parent / "ui" / "dist"
+C = "/classic"
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    _store().close()            # convert and ingest the notes once, not on every request
+    yield
+
+
+app = FastAPI(title="Tutor", lifespan=lifespan)
+classic = APIRouter(prefix=C)
+tutor_api.DB = DB
 
 
 def _store() -> Store:
@@ -97,11 +118,11 @@ def _page(title: str, body: str, mermaid: bool = False) -> HTMLResponse:
         f"<style>{CSS}</style>{body}{script}")
 
 
-@app.get("/", response_class=HTMLResponse)
+@classic.get("/", response_class=HTMLResponse)
 def home():
     return _page("Tutor",
                  "<h1>Learn Python from your teacher's notes</h1>"
-                 "<form method='post' action='/start'>"
+                 "<form method='post' action='/classic/start'>"
                  "<p><label>Your name or id<br><input type='text' name='student' required></label></p>"
                  "<p><label>What to learn (comma separated)<br>"
                  "<input type='text' name='concepts' "
@@ -111,17 +132,17 @@ def home():
                  "<button>Start</button></form>")
 
 
-@app.post("/start")
+@classic.post("/start")
 def start(student: str = Form(...), concepts: str = Form(...), interests: str = Form("")):
     s = _store()
     cs = [c.strip() for c in concepts.split(",") if c.strip()]
     ints = [i.strip() for i in interests.split(",") if i.strip()] or None
     run = session.start_session(s, student.strip(), cs, ints)
     _step(s, run)
-    return RedirectResponse(f"/s/{run}", status_code=303)
+    return RedirectResponse(f"{C}/s/{run}", status_code=303)
 
 
-@app.get("/s/{run}", response_class=HTMLResponse)
+@classic.get("/s/{run}", response_class=HTMLResponse)
 def show(run: str):
     s = _store()
     try:
@@ -145,7 +166,7 @@ def show(run: str):
         why = ("You have got the hang of these." if end and end["reason"] == "mastery"
                else html.escape(fail["detail"]) if fail else "Session finished.")
         return _page("Done", body + f"<h1>Session over</h1><p>{why}</p><ul>{rows}</ul>"
-                             "<p><a href='/'>Start another</a></p>")
+                             "<p><a href='/classic/'>Start another</a></p>")
 
     q = session.open_quiz(s, run)
     if lesson is None or q is None:
@@ -167,19 +188,19 @@ def show(run: str):
     if model.answer_mode == "mcq":
         opts = "".join(f"<label class='opt'><input type='radio' name='choice' value='{i}' required> "
                        f"{html.escape(o['text'])}</label>" for i, o in enumerate(quiz["options"]))
-        body += f"<form method='post' action='/s/{run}/answer'>{opts}<button>Answer</button></form>"
+        body += f"<form method='post' action='{C}/s/{run}/answer'>{opts}<button>Answer</button></form>"
         other, label = "text", "Answer in my own words instead"
     else:
-        body += (f"<form method='post' action='/s/{run}/answer'>"
+        body += (f"<form method='post' action='{C}/s/{run}/answer'>"
                  "<textarea name='text' required placeholder='Explain in your own words'></textarea>"
                  "<button>Answer</button></form>")
         other, label = "mcq", "Give me choices instead"
-    body += (f"<form method='post' action='/s/{run}/mode'><input type='hidden' name='mode' "
+    body += (f"<form method='post' action='{C}/s/{run}/mode'><input type='hidden' name='mode' "
              f"value='{other}'><button>{label}</button></form></div>")
     return _page(lesson["concept"], body + BUSY, mermaid=bool(lesson.get("diagram")))
 
 
-@app.post("/s/{run}/answer")
+@classic.post("/s/{run}/answer")
 def answer(run: str, choice: int | None = Form(None), text: str = Form("")):
     s = _store()
     q = session.open_quiz(s, run)
@@ -189,13 +210,28 @@ def answer(run: str, choice: int | None = Form(None), text: str = Form("")):
         elif text.strip():
             session.submit_text(s, q.id, text.strip())
         else:
-            return RedirectResponse(f"/s/{run}", status_code=303)
+            return RedirectResponse(f"{C}/s/{run}", status_code=303)
         _step(s, run)
-    return RedirectResponse(f"/s/{run}", status_code=303)
+    return RedirectResponse(f"{C}/s/{run}", status_code=303)
 
 
-@app.post("/s/{run}/mode")
+@classic.post("/s/{run}/mode")
 def mode(run: str, mode: str = Form(...)):
     if mode in ("mcq", "text"):
         session.set_answer_mode(_store(), run, mode)
-    return RedirectResponse(f"/s/{run}", status_code=303)
+    return RedirectResponse(f"{C}/s/{run}", status_code=303)
+
+
+# ---- wiring. The static mount catches everything, so it must be registered last.
+app.include_router(tutor_api.router)
+app.include_router(classic)
+
+if UI_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=UI_DIST, html=True), name="ui")
+else:
+    @app.get("/", response_class=HTMLResponse)
+    def no_ui():
+        return _page("Tutor",
+                     "<h1>The chat UI has not been built</h1>"
+                     "<p>Run <code>npm install &amp;&amp; npm run build</code> in "
+                     "<code>web/ui</code>, or use the <a href='/classic/'>classic page</a>.</p>")
