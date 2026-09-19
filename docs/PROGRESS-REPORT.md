@@ -1,6 +1,6 @@
 # Progress report: the cognitive-twin tutor
 
-*As of commit `6c79792` on `main` (2026-09-19, 16:45). Every number here was measured or counted, and says how. Where
+*As of commit `d122a31` on `main` (2026-09-19, 17:29). Every number here was measured or counted, and says how. Where
 something is not done or not verified, it says that instead.*
 
 ## In one paragraph
@@ -75,25 +75,42 @@ Tests: **151 collected, 148 run offline** with a scripted model. The three that 
 
 ## Feedback from outside users, and what we changed
 
-People outside the team have tried the tutor and suggested changes. Three of them are named here; the team reports that more of the
-suggestions came from outside users too.
+People outside the team have tried the tutor and suggested changes. Three are named here. The team has not recorded a total beyond
+these three, so this report says "at least three".
 
-| who | what they did or suggested | what we changed | where |
+| who | what they raised | what we changed | where |
 |---|---|---|---|
-| **Arun N M** | Tested an **early version, before the UI change**: the first server-rendered page (still available at `/classic`). | Nothing is claimed as a result of this test. The chat page (assistant-ui and shadcn) came **after** it; see the UI row below for who asked for UI changes. | `82ee223` came later |
-| **Kavin** | Suggested a **confidence level**: a way to say how sure you are of an answer. | A "How sure are you?" rating (just guessing, fairly sure, certain) and an "I don't know" answer. The rating changes the score: being certain and wrong costs the most and counts double towards that wrong belief, a lucky guess proves little, and one certain right answer cannot master a topic alone. | `1ebec1a`; `demo/tutor/learner.py`, `web/ui/src/components/tutor/cards.tsx` |
+| **Arun N M** | Tested an **early version, before the UI change** (the first server-rendered page, still at `/classic`), and asked for **UI improvements**. | The chat page (assistant-ui and shadcn) replaced the first page, with feedback shown at once and a card for each kind of step. Later: mastery as a percentage instead of a bar, and the answer controls moved inside the question so nothing covers the options. | `82ee223`, `1ebec1a`; `web/ui/` |
+| **Kavin** | Suggested a **confidence level**: a way to say how sure you are of an answer. Also raised **using their own documents as the source of truth**. | A "How sure are you?" rating (just guessing, fairly sure, certain) and an "I don't know" answer, which change the score: being certain and wrong costs the most and counts double towards that wrong belief, a lucky guess proves little, and one certain right answer cannot master a topic alone. And a "Use my documents as the source of truth" switch: off by default, when on the tutor teaches only from the student's files and cites them, and says so when a topic is not in them instead of guessing. | `1ebec1a`; `732a8ef`; `demo/tutor/learner.py`, `flow.py`, `library.py`, `cards.tsx` |
 | **Akileswaran** | Raised **adding documents**: it did not work on the first screen. | Fixed: a file chosen on the start screen was never added, because the handler read the file list after the input had been cleared. Reproduced in a browser, fixed, and checked end to end. Documents can also be added, listed and removed from the side panel. | `1ebec1a`, `732a8ef`; `StartScreen.tsx`, `demo/tutor/library.py` |
-| *TODO(team): who* | Asked to **use their documents as the source of truth**. | A "Use my documents as the source of truth" switch. Off by default: the tutor teaches from the AI's own knowledge. On: it teaches only from the student's files and cites them, and says so when a topic is not in them instead of guessing. | `732a8ef`; `demo/tutor/flow.py`, `library.py` |
-| *TODO(team): who* | Asked for **UI improvements**. | The chat page replaced the first server-rendered page, with feedback shown at once and a card for each kind of step. Later: mastery as a percentage instead of a bar, and the answer controls moved inside the question so nothing covers the options. | `82ee223`, `1ebec1a`; `web/ui/` |
 
-Details a judge will want, which we have **not** recorded here yet:
+**How fast the loop was.** The tutor's first commit is 13:30 on 19 September 2026 (IST), so no test of it can be earlier. Every change
+above was committed by 16:45 the same day: the chat page at 15:38, the source-of-truth switch at 16:24, the confidence rating and the
+document fix at 16:45. So each loop from "someone tried it" to "we changed it" was **at most 3 hours 15 minutes**, and shorter for most.
+That is a limit worked out from commit times, not something anyone timed, and the team should confirm the actual times.
 
-- `TODO(team)`: how many outside users in total (at least the three named above), and who they were (course, year, role).
-- `TODO(team)`: when and where each tried it, and whether the team watched or they tried it alone.
-- `TODO(team)`: one or two quotes in their own words, and what surprised the team.
-- `TODO(team)`: who suggested the source-of-truth switch and the UI changes, and what exactly they said.
-- `TODO(team)`: anything they suggested that we did **not** do, and why.
-- `TODO(team)`: what they could do afterwards that they could not before (the rubric's "did it help" question).
+**What surprised us.** A tester chose **kho kho** as their interest. Interests are free text and only shape the analogies; they never
+affect grading. The examples we had put on the start screen and used while building were football and chess, so this is a case we had
+not tried ourselves. We have not recorded how the analogy turned out.
+
+**What we did not do about their feedback.** No suggestion the named testers made was turned down: all four (UI improvements, the
+confidence level, adding documents, documents as the source of truth) were built. What is missing is follow-up, not features:
+
+- The repository holds no record of a second round: nothing shows these people using the changed version.
+- The confidence weights (0.3 / 0.5 / 0.6 for a right answer, 0.7 / 0.5 / 0.3 for a wrong one) are our guesses. Nothing compares what
+  students say about their confidence with how they actually do.
+- Documents have only been tried with the three sample notes and a synthetic PDF, not with a real teacher's PDF or slides.
+
+**Did it help?** What a tester can do now that they could not before, taken from the code and not from watching anyone:
+
+- Say how sure they are, and have that change the result. Say "I don't know" without it being recorded as a wrong belief.
+- Add their own documents from the first screen, and choose whether the tutor may teach only from them.
+- See whether they were right the moment they answer, and see which wrong idea an answer points to.
+
+**We have not measured whether anyone learned more.** There is no before-and-after test and no comparison with a plain chat assistant,
+so this section shows that testers were heard and the tool changed quickly, not that it improved their results. A quick way to get real
+evidence is: ask a tester three questions on a topic cold, let them use the tutor for about 15 minutes on it, then ask three different
+questions on the same topic, and note both scores and what they said.
 
 The suggestion the team has raised since, and that the design now addresses, is depth: questions felt too simple and a session ended after
 a couple of right answers. That one has not been built (see "What is next").
@@ -123,11 +140,11 @@ This is the useful part.
 
 ## Not done, or not verified
 
-- **The evidence from outside users is thin in this file.** Outside users have tried it (see the next section; three are named), and the
-  rubric gives real users as much weight as the build (35 of 100). What is missing is the detail a judge will ask for: how many in total,
-  when, and what they said, in their words. Those are marked `TODO(team)` below. More sessions with people outside the team would strengthen this.
-- **`PRE-EVENT-ASSETS.md`** (required by the event rules) did not exist at the time of writing, and the README still described the kit
-  for participants rather than telling a judge how to run the tutor. Both are being written separately.
+- **Outside-user evidence is real but thin.** Outside users have tried it (see "Feedback from outside users" above; three are named), and the
+  rubric gives real users as much weight as the build (35 of 100). What is missing is a second round with the same people, and any measure
+  of whether they learned more.
+- **`PRE-EVENT-ASSETS.md`** (required by the event rules) exists now, but it was not the first commit, and it has `TODO(team)` lines that
+  only the team can answer (who wrote the sample notes, when the event started, where the repository came from).
 - **Codespaces:** never tested with the current UI. It uses Python 3.12; we ran on 3.14. Only port 8000 is forwarded there.
 - **Real teacher PDFs:** only a synthetic PDF is tested. **Free-tier rate limits:** latency was measured, limits were not. **Diagrams
   offline:** Mermaid loads from a CDN, so a diagram needs internet.

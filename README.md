@@ -204,29 +204,27 @@ and the offline tests; the model's wording will vary.
 
 ## What outside users told us, and what we changed
 
-The team reports that people outside the team tried the tutor and suggested
-changes. Three are named below. The same table, with more detail, is in
-[`docs/PROGRESS-REPORT.md`](docs/PROGRESS-REPORT.md). The repository itself does
-not record how many people there were in all, or when, so those details are left
-open on purpose:
+The team reports that people outside the team tried the tutor and suggested changes. At least three are named below. The same table,
+with more detail, is in [`docs/PROGRESS-REPORT.md`](docs/PROGRESS-REPORT.md).
 
-- `TODO(team): total number of outside users (at least the three named here)`
-- `TODO(team): date and place, and whether the team watched or they tried it alone`
-- `TODO(team): one or two quotes, in their words`
-- `TODO(team): what surprised us`
-- `TODO(team): what we did not do, and why`
-
-| Who | What they did or asked for | What we changed | Where (commit, files) | How to see it in the tour |
+| Who | What they raised | What we changed | Where (commit, files) | How to see it in the tour |
 |---|---|---|---|---|
-| Arun N M | Tested an early version, before the UI change: the first server-rendered page, still available at `/classic/`. | The chat page came after it (assistant-ui and shadcn/ui, with a progress side panel). Later, a percentage per topic instead of a bar, and the answer controls moved inside the question card so nothing covers the options. | `82ee223` (`web/ui/`, `web/tutor_api.py`); `1ebec1a` | Open `/classic/` and compare it with the tour |
-| Kavin | Suggested a confidence level: a way to say how sure you are of an answer. | **How sure are you?** with **Just guessing / Fairly sure / Certain**, never defaulted, plus **I don’t know**. Confidence changes scoring: a certain wrong answer costs the most and the idea counts double; a guess that is right moves less. | `1ebec1a` · `demo/tutor/learner.py`, `flow.py`, `web/ui/src/components/tutor/cards.tsx` | Steps 2 and 3 |
+| Arun N M | Tested an early version, before the UI change (the first server-rendered page, still at `/classic/`), and asked for UI improvements. | The chat page (assistant-ui and shadcn/ui, with a progress side panel) replaced it. Later, a percentage per topic instead of a bar, and the answer controls moved inside the question card so nothing covers the options. | `82ee223` (`web/ui/`, `web/tutor_api.py`); `1ebec1a` | Open `/classic/` and compare it with the tour |
+| Kavin | Suggested a confidence level: a way to say how sure you are of an answer. Also raised using their own documents as the source of truth. | **How sure are you?** with **Just guessing / Fairly sure / Certain**, never defaulted, plus **I don’t know**; confidence changes scoring. And documents are opt-in: the model teaches from its own knowledge by default, and with **Use my documents as the source of truth** on, only from the student's files, with citations; a topic they do not cover is asked about, not guessed. | `1ebec1a`, `732a8ef` · `demo/tutor/learner.py`, `flow.py`, `library.py`, `web/ui/src/components/tutor/cards.tsx` | Steps 1 to 4 and 6 |
 | Akileswaran | Raised adding documents: it did not work on the first screen. | Fixed: a file chosen on the start screen was never added, because the handler read the file list after the input had been cleared. Documents can also be added, listed and removed from the side panel; **Try sample notes** adds three sample files. | `1ebec1a` (`StartScreen.tsx`); `732a8ef` (`demo/tutor/library.py`, `web/tutor_api.py`) | Step 4 |
-| `TODO(team): who` | Asked to use their documents as the source of truth. | Documents are opt-in. Default: the model teaches from its own knowledge and says so. Switch on **Use my documents as the source of truth** and lessons come only from those documents, with citations; a topic they do not cover is asked about, not guessed. | `732a8ef` · `demo/tutor/flow.py`, `library.py`, `session.py` | Steps 1, 4 and 6 |
-| `TODO(team): who` | Asked for UI improvements. | See Arun N M's row: the chat page, percentages, answer controls inside the card. | `82ee223`, `1ebec1a` | The whole tour; the panel on the right |
 
-The commit messages do not mention outside users, and all of the tutor's commits
-fall on one day (19 September 2026), so this table records what the team reports,
-not something the git history proves.
+- **How fast:** every change was committed on 19 September 2026 between 15:38 and 16:45 IST, and the tutor's first commit is 13:30 the
+  same day, so each loop from "someone tried it" to "we changed it" was at most 3 hours 15 minutes. That is worked out from commit
+  times, not timed by anyone.
+- **What surprised us:** a tester chose **kho kho** as their interest. Interests are free text and only shape the analogies (never
+  the grading); our own examples were football and chess.
+- **What we did not do:** nothing the named testers asked for was turned down. The repository holds no record of a second round with
+  the same people, the confidence weights are our guesses, and documents have only been tried with the sample notes and a synthetic PDF.
+- **Did it help?** Not measured. There is no before-and-after test and no comparison with a plain chat assistant, so this shows that
+  testers were heard and the tool changed quickly, not that it improved their results.
+
+The commit messages do not mention outside users, and all of the tutor's commits fall on one day (19 September 2026), so this table records
+what the team reports, not something the git history proves.
 
 ---
 
