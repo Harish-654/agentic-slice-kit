@@ -128,6 +128,7 @@ def complete(
     model: str | None = None,
     step: str = "call",
     timeout: float = 120.0,
+    reasoning: bool | None = None,
 ) -> Any:
     """Call a model. Returns a parsed `schema` instance, or raw text if no
     schema was asked for.
@@ -135,6 +136,12 @@ def complete(
     Raises CapExhausted / PoolExhausted / SchemaFailure / BudgetExceeded - all
     of which the runner handles explicitly. Nothing here raises a bare
     HTTPError into caller code.
+
+    `reasoning=False` asks a reasoning model not to think first. Those thinking
+    tokens are generated (slow), billed, and counted against max_tokens: measured
+    on ling-3.0-flash, a lesson spent 1143 of its 1200 tokens thinking and came
+    back empty. Leave it None to keep the model's default, which is right for a
+    step that genuinely needs to reason. Models that cannot reason ignore it.
     """
     budget.check_tokens()                       # refuse to start, not to finish
 
@@ -154,6 +161,8 @@ def complete(
             }
             if schema is not None:
                 body["response_format"] = {"type": "json_object"}
+            if reasoning is False:
+                body["reasoning"] = {"enabled": False}
 
             t0 = time.time()
             try:
@@ -204,7 +213,7 @@ def complete(
 
             # One repair pass. Show the model its own output and the error -
             # a second identical request usually fails identically.
-            repaired = _repair(settings, budget, messages, last_text, schema, mid, timeout)
+            repaired = _repair(settings, budget, messages, last_text, schema, mid, timeout, reasoning)
             if repaired is not None:
                 return repaired
             if role == "fallback":
@@ -244,7 +253,7 @@ def _parse(text: str, schema: Type[BaseModel]):
         return None
 
 
-def _repair(settings, budget, messages, bad_text, schema, mid, timeout):
+def _repair(settings, budget, messages, bad_text, schema, mid, timeout, reasoning=None):
     budget.check_tokens()
     try:
         schema.model_validate_json(_strip_fence(bad_text))
@@ -260,12 +269,13 @@ def _repair(settings, budget, messages, bad_text, schema, mid, timeout):
             f"Required JSON schema:\n{json.dumps(schema.model_json_schema())}\n\n"
             "Reply with the corrected JSON object and nothing else."},
     ]
+    body = {"model": mid, "max_tokens": settings.max_tokens, "temperature": 0,
+            "messages": fix, "response_format": {"type": "json_object"}}
+    if reasoning is False:
+        body["reasoning"] = {"enabled": False}
     try:
         r = httpx.post(f"{API}/chat/completions", timeout=timeout,
-                       headers={"Authorization": f"Bearer {settings.api_key}"},
-                       json={"model": mid, "max_tokens": settings.max_tokens,
-                             "temperature": 0, "messages": fix,
-                             "response_format": {"type": "json_object"}})
+                       headers={"Authorization": f"Bearer {settings.api_key}"}, json=body)
     except httpx.RequestError:
         return None
     if r.status_code == 402:
