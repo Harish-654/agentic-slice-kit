@@ -139,7 +139,8 @@ def test_the_api_hides_the_held_check_until_quiz_me_and_never_shows_the_key(tmp_
     snap = settle(c, run)
 
     assert snap["status"] == "waiting_choice"
-    lesson_msg, menu = snap["messages"]
+    plan_card, lesson_msg, menu = snap["messages"]
+    assert plan_card["kind"] == "map" and plan_card["flowchart"].startswith("flowchart TD")   # the plan is shown first
     assert lesson_msg["kind"] == "lesson" and lesson_msg["quiz"] is None and lesson_msg["open"] is None
     assert menu["kind"] == "choices" and menu["options"] == ALL and menu["chosen"] is None
     sent = json.dumps(snap)
@@ -150,16 +151,16 @@ def test_the_api_hides_the_held_check_until_quiz_me_and_never_shows_the_key(tmp_
     snap = settle(c, run)
     assert snap["status"] == "waiting_student"
     kinds = [m["kind"] for m in snap["messages"]]
-    assert kinds == ["lesson", "choices", "card"] and snap["messages"][1]["chosen"] == "quiz"
-    card = snap["messages"][2]
+    assert kinds == ["map", "lesson", "choices", "card"] and snap["messages"][2]["chosen"] == "quiz"
+    card = snap["messages"][3]
     assert card["quiz"]["question"].startswith("What does f()") and card["quiz"]["answered"] is None
     assert '"correct"' not in json.dumps(snap) and "default-is-copied" not in json.dumps(snap)
 
     assert c.post(f"/api/sessions/{run}/choice", json={"choice": "quiz"}).status_code == 409   # nothing to choose now
     c.post(f"/api/sessions/{run}/answer", json={"choice": RIGHT, "confidence": "high"})
     snap = settle(c, run)
-    assert [m["kind"] for m in snap["messages"]][:5] == ["lesson", "choices", "card", "answer", "feedback"]
-    assert snap["messages"][2]["quiz"]["answered"]["correct"] is True
+    assert [m["kind"] for m in snap["messages"]][:6] == ["map", "lesson", "choices", "card", "answer", "feedback"]
+    assert snap["messages"][3]["quiz"]["answered"]["correct"] is True
 
 
 def test_the_api_refuses_a_menu_option_the_cap_has_withdrawn(tmp_path, monkeypatch):

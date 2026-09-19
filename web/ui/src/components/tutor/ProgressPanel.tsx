@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { MermaidView } from './MermaidView'
 import { useTutor } from './context'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -125,6 +126,45 @@ const Documents: FC<{ docs: string[]; useDocs: boolean }> = ({ docs, useDocs }) 
   )
 }
 
+/** The plan as a picture that follows the student: a flowchart (green known, amber shaky, grey new, blue
+ * outline for where they are now) or a mind map with the percentages. Built by the server, redrawn as it changes. */
+const ConceptMap: FC<{ map: NonNullable<ProgressData['map']> }> = ({ map }) => {
+  const [tab, setTab] = useState<'map' | 'mind'>('map')
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Concept map</p>
+        <div className="inline-flex rounded-lg border p-0.5 text-xs" role="tablist" aria-label="Map style">
+          {(
+            [
+              ['map', 'Map'],
+              ['mind', 'Mind map'],
+            ] as const
+          ).map(([value, name]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => setTab(value)}
+              className={cn(
+                'rounded-md px-2 py-0.5 transition-colors',
+                tab === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <MermaidView key={tab} source={tab === 'map' ? map.flowchart : map.mindmap} className="flex justify-center overflow-x-auto" />
+      {tab === 'map' ? (
+        <p className="text-xs text-muted-foreground">Green: you know it. Amber: shaky. Grey: new. Blue outline: now.</p>
+      ) : null}
+    </div>
+  )
+}
+
 /** The learner model, made visible: how well the student knows each concept and
  * which wrong beliefs they keep coming back to. */
 export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({ progress, student }) => {
@@ -144,9 +184,12 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
         ) : null}
       </div>
 
-      <Separator />
-
-      <Documents docs={progress.docs} useDocs={progress.use_docs} />
+      {progress.map ? (
+        <>
+          <Separator />
+          <ConceptMap map={progress.map} />
+        </>
+      ) : null}
 
       <Separator />
 
@@ -196,6 +239,10 @@ export const ProgressPanel: FC<{ progress: ProgressData; student: string }> = ({
           </div>
         </>
       ) : null}
+
+      <Separator />
+
+      <Documents docs={progress.docs} useDocs={progress.use_docs} />
     </div>
   )
 }

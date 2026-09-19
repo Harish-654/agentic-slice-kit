@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react'
 import { BookOpenIcon, CheckCircle2Icon, FileTextIcon, HelpCircleIcon, InfoIcon, LightbulbIcon, SparklesIcon, TriangleAlertIcon, XCircleIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { humanize, STYLE_LABEL } from '@/lib/format'
 import type { Answered, Choice, CodeTaskQ, Confidence, Gap, OpenQ, Quiz } from '@/lib/api'
 import { CodeEditor } from './CodeEditor'
+import { MermaidView } from './MermaidView'
 import { useTutor } from './context'
 
 /** Concept, how it is being taught, and where the facts came from. The source is always
@@ -49,46 +50,26 @@ export const LessonHeader: ToolCallMessagePartComponent = ({ args, toolCallId })
   )
 }
 
-const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
-
-/** A diagram the model drew. Mermaid is loaded only when a lesson has one, and a
- * diagram that does not parse is dropped: a missing picture beats an error graphic. */
+/** A diagram the model drew in a lesson: a flowchart, class, sequence or state diagram. */
 export const DiagramView: ToolCallMessagePartComponent = ({ args }) => {
   const { source } = args as { source: string }
-  const host = useRef<HTMLDivElement>(null)
-  const [state, setState] = useState<'loading' | 'ok' | 'hidden'>('loading')
-  const id = useId().replace(/:/g, '')
+  return <MermaidView source={source} className="my-3 flex justify-center overflow-x-auto rounded-lg border bg-card p-3" />
+}
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const { default: mermaid } = await import(/* @vite-ignore */ MERMAID)
-        const dark = document.documentElement.classList.contains('dark')
-        mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true, theme: dark ? 'dark' : 'default' })
-        await mermaid.parse(source)
-        const { svg } = await mermaid.render(`d${id}`, source)
-        if (cancelled || !host.current) return
-        host.current.innerHTML = svg
-        setState('ok')
-      } catch {
-        if (!cancelled) setState('hidden')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [source, id])
-
-  if (state === 'hidden') return null
+/** The plan as a picture, shown once when a guided session starts: what the topic builds on, the
+ * parts it will be taught in, and how much of it you already know. The panel keeps a live copy. */
+export const PlanMapCard: ToolCallMessagePartComponent = ({ args }) => {
+  const { flowchart } = args as { flowchart: string; mindmap: string }
   return (
-    <div
-      ref={host}
-      className={cn(
-        'my-3 flex justify-center overflow-x-auto rounded-lg border bg-card p-3',
-        state === 'loading' && 'h-24 animate-pulse',
-      )}
-    />
+    <Card className="gap-2 py-4">
+      <CardContent className="px-4">
+        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Your plan</p>
+        <p className="mb-2 text-sm text-muted-foreground">
+          What this topic builds on, and the parts we will cover. Green is what you know, amber is shaky, grey is new.
+        </p>
+        <MermaidView source={flowchart} className="flex justify-center overflow-x-auto" />
+      </CardContent>
+    </Card>
   )
 }
 

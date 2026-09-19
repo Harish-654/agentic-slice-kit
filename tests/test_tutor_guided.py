@@ -204,7 +204,8 @@ def test_the_api_shows_the_plan_and_hides_the_probe_answer_key(tmp_path, monkeyp
     assert snap["progress"]["mode"] == "guided"
     assert snap["progress"]["plan"] == {"target": TARGET, "prereqs": [PRE], "subtopics": []}
     assert [row["concept"] for row in snap["progress"]["concepts"]] == [PRE, TARGET]
-    [msg] = snap["messages"]
+    plan_card, msg = snap["messages"]
+    assert plan_card["kind"] == "map"
     assert msg["style"] == "probe" and msg["quiz"]["answered"] is None
     sent = json.dumps(snap)
     assert "class-is-an-instance" not in sent and '"correct"' not in sent
