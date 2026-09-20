@@ -23,3 +23,19 @@ export function timeAgo(seconds: number, now: number = Date.now() / 1000): strin
   const months = Math.floor(days / 30)
   return months === 1 ? '1 month ago' : `${months} months ago`
 }
+
+/** What the page says while a lesson is being written, one line after another. They are status lines, not a log:
+ * the work underneath is the model writing the lesson. */
+export const THINKING = [
+  'Analyzing your learning patterns…',
+  'Identifying knowledge gaps…',
+  'Connecting related concepts…',
+  'Tailoring your learning path…',
+  'Preparing your next challenge…',
+] as const
+export const THINKING_MS = 2400
+
+/** The line to show after `elapsedMs` of waiting: each for THINKING_MS, then round again. */
+export function thinkingAt(elapsedMs: number): string {
+  return THINKING[Math.floor(Math.max(0, elapsedMs) / THINKING_MS) % THINKING.length]
+}

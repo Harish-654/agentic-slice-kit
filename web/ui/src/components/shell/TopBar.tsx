@@ -13,7 +13,7 @@ export const TopBar: FC<{ student: string; view: View; onView: (v: View) => void
       <div className="flex items-center gap-2.5">
         <Mark className="text-route" />
         <div className="leading-none">
-          <p className="font-heading text-lg font-semibold">Tutor</p>
+          <p className="font-heading text-lg font-semibold">Strata</p>
           <p className="eyebrow mt-1 hidden text-[0.625rem] sm:block">Learning as {student}</p>
         </div>
       </div>

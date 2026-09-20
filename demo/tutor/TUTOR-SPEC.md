@@ -1,4 +1,4 @@
-# AgentSpec — Cognitive-twin tutor
+# AgentSpec — Strata, a cognitive-twin tutor
 
 **Team:**  
 **Department:**  
@@ -340,7 +340,7 @@ counts as "fairly sure", which is the original 0.5 / 0.5 rule.
 
 ### The learning dashboard
 
-The start screen opens with what the student has already learnt: each topic they have studied, newest
+The start screen has a Dashboard tab beside Learn. It shows what the student has already learnt: each topic they have studied, newest
 first, and which of its parts they have completed. Nothing is stored for it (`demo/tutor/dashboard.py`,
 `GET /api/me/learning`): it reads the student's twin and their past sessions' plans. A part counts as
 completed once the student reached the 75% bar on it, and reads "Review due" if it has since faded. A topic

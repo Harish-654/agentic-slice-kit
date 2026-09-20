@@ -40,7 +40,7 @@ UI_DIST = Path(__file__).parent / "ui" / "dist"
 C = "/classic"
 
 
-app = FastAPI(title="Tutor")
+app = FastAPI(title="Strata")
 classic = APIRouter(prefix=C)
 tutor_api.DB = DB
 
@@ -127,7 +127,7 @@ def _page(title: str, body: str, mermaid: bool = False) -> HTMLResponse:
 def home(user: str | None = Depends(_classic_user)):
     who = (f"<p>Signed in as <b>{html.escape(user)}</b>.</p>" if user else
            "<p><label>Your name or id<br><input type='text' name='student' required></label></p>")
-    return _page("Tutor",
+    return _page("Strata",
                  "<h1>Learn Python from your teacher's notes</h1>"
                  "<form method='post' action='/classic/start'>" + who +
                  "<p><label>What to learn (comma separated)<br>"
@@ -222,7 +222,7 @@ if UI_DIST.is_dir():
 else:
     @app.get("/", response_class=HTMLResponse)
     def no_ui():
-        return _page("Tutor",
+        return _page("Strata",
                      "<h1>The chat UI has not been built</h1>"
                      "<p>Run <code>npm install &amp;&amp; npm run build</code> in "
                      "<code>web/ui</code>, or use the <a href='/classic/'>classic page</a>.</p>")

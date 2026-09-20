@@ -1,6 +1,6 @@
-# Cognitive-twin tutor
+# Strata
 
-**For judges.** This is a tutor for any topic that remembers what each student gets
+**For judges.** Strata is a cognitive-twin tutor for any topic. It remembers what each student gets
 wrong and teaches the next lesson differently. Beside every lesson sits a code sandbox
 that runs Python, JavaScript, Java and C++ (each in a version the student picks). It runs in a browser: the student
 picks topics, reads a short lesson, answers a check, and says how sure they were.
@@ -60,8 +60,8 @@ Then open <http://127.0.0.1:8001> in a browser. Stop the server with Ctrl+C.
   answers need none. Program questions and the code coach run a student's code in a
   throwaway Docker container (no network, read-only, non-root, memory and time
   limited), one image per language and version. Pull them once with
-  `python scripts/pull_runtimes.py` (the default version of each language, about
-  1.5 GB; `--list` shows what is already here). A language whose image is missing
+  `python scripts/pull_runtimes.py` (the default version of each language, about 3.4 GB on disk, measured;
+  `--all` pulls every version, roughly 6 GB, estimated; `--list` shows what is already here). A language whose image is missing
   still teaches: its program questions become multiple choice and the page says so.
 - **A free OpenRouter key is enough** (as the team reports; this was not checked
   independently). Get one at openrouter.ai. Lessons call the models named in
@@ -90,7 +90,7 @@ and it creates `.env` from `.env.example` for you (you still add the key).
 **Running code in Codespaces.** The code sandbox needs Docker, so the Codespace runs
 Docker inside itself (the `docker-in-docker` feature in `.devcontainer/devcontainer.json`)
 and pulls the runtime images in the background each time it starts. The first time takes
-a few minutes and about 1.5 GB; until an image is there, **Run** says that runtime is not
+a few minutes and about 3.4 GB on disk; until an image is there, **Run** says that runtime is not
 installed, and Python 3.12 arrives first. Watch it with `tail -f /tmp/pull_runtimes.log`,
 and see what is present with `python scripts/pull_runtimes.py --list`. **A Codespace
 created before this was added does not pick it up by itself: run "Codespaces: Rebuild
@@ -135,7 +135,7 @@ What still works without a key:
 What does not work: **lessons.** Every lesson and every written-answer grade needs a model.
 
 What you will see if you click **Start learning** with an empty key: a moment of
-"Reading your teacher’s notes and preparing your first lesson…", then (within a
+"Analyzing your learning patterns…" (the page cycles through five such lines while it works), then (within a
 couple of seconds, no waiting for a timeout) a session with a red notice:
 
 > Both models unreachable (Illegal header value b'Bearer '). Run `python scripts/doctor.py` - this is usually the network or a provider outage, not your code.
@@ -154,8 +154,9 @@ embedding model not baked in) only matter inside Codespaces and can be ignored.
 
 Use a wide window (the progress panel is on the right; on a phone it folds into
 **Your progress** at the top). A lesson takes about 10 to 25 seconds on a free key
-(the team's figure, not re-timed in the fresh-clone check). While it is written the page says
-"Writing your next lesson…". Your right-or-wrong feedback appears at once, while
+(the team's figure, not re-timed in the fresh-clone check). While it is written the page cycles
+through "Analyzing your learning patterns…", "Identifying knowledge gaps…", "Connecting related concepts…",
+"Tailoring your learning path…" and "Preparing your next challenge…". Your right-or-wrong feedback appears at once, while
 the next lesson is still being written.
 
 The labels below are copied from the page's source
@@ -205,6 +206,10 @@ and the offline tests; the model's wording will vary.
    the next card is headed **Explain in your own words**. The box
    ("Explain it in your own words…") is locked until you choose a confidence, then
    press Enter. Expect "Checking your answer…" for a while: a model grades it.
+   This switch, and **Ask my next question as a program to write** beside it, can be
+   flipped at any time, at the "What next?" menu or even while a lesson is being written:
+   a change made during the wait is sent as soon as the lesson lands. (The program switch
+   stays off, and says why, only when the sandbox for the chosen language is switched off.)
 
 6. **A topic outside the documents.** Click **New session** (top right). The start
    screen says "Already saved for judge: ..." under your documents. Type the topic
@@ -240,13 +245,13 @@ and the offline tests; the model's wording will vary.
    screen, under the form) fills in. A day counts if you answered a question or ran
    your own code, in your own timezone.
 
-10. **See what you have learnt.** Click **New session** to get back to the start
-    screen. Once you have any history, the first thing on it is **Your learning**:
-    four figures (topics learnt, parts completed, ideas to review, sessions) and a
-    card for each topic you have studied, newest first. A guided topic's card shows
-    how many of its parts you have done and lists each one as **Got it**, **Learning**,
-    **Review due** or **New**, with what the topic builds on. **Study again** puts that
-    topic in the box below. A brand-new account has no history, so it sees no dashboard.
+10. **See what you have learnt.** The start screen has two tabs, **Learn** (the form)
+    and **Dashboard**; **New session** brings you back to it. Open **Dashboard** for four
+    figures (topics learnt, parts completed, ideas to review, sessions) and a card for each
+    topic you have studied, newest first. A guided topic's card shows how many of its parts
+    you have done and lists each one as **Got it**, **Learning**, **Review due** or **New**,
+    with what the topic builds on. **Study again** takes you to **Learn** with that topic in
+    the box. A brand-new account has no history, so its Dashboard says "Nothing here yet".
 
 **The progress panel** (right side) shows **What you know**: one percentage per topic,
 `0%` and "not started" until you answer something, "Got it" at 75% or more, and
@@ -395,10 +400,10 @@ Only things we reproduced, or read directly from the code (marked "code").
 | A red notice saying `... returned HTTP 401` (code) | The key is wrong or revoked. Fix `.env`, restart the server. |
 | A red notice saying `HTTP 429` (code) | The provider is throttling the free tier. Wait a minute, then **Start a new session**. |
 | A red notice about credit or `402` (code) | OpenRouter refused the request because the key's balance cannot cover it. Use a key with credit, or lower `SLICE_MAX_TOKENS` in `.env` (see the comments in `.env.example`), then restart. `python scripts/doctor.py` reports it. |
-| Lessons very slow | Free-tier models can be slow. The page keeps saying "Writing your next lesson…". Each model call gives up after 120 s and then tries a second model; if both fail you get a red notice and a **Start a new session** button (code). Progress up to the last answer is saved. |
+| Lessons very slow | Free-tier models can be slow. The page keeps cycling through "Analyzing your learning patterns…" and its four sister lines. Each model call gives up after 120 s and then tries a second model; if both fail you get a red notice and a **Start a new session** button (code). Progress up to the last answer is saved. |
 | An upload is rejected (reproduced) | Only `.md`, `.txt`, `.pdf`, `.docx`; at most 5 MB per file; at most 10 files per student. The page shows the reason, for example `'a.exe': only .docx, .md, .pdf, .txt files can be added.` or `You can keep up to 10 documents. Remove one first.` A broken PDF says `could not be read`. |
 | The first upload (or **Try sample notes**) takes a while, or fails offline | It downloads a 65 MB embedding model once and needs internet. The default cache is your system temp folder (`/tmp/fastembed_cache` on Linux), so a reboot can clear it. Set `FASTEMBED_CACHE_PATH` to keep it. |
-| A session stuck on "Reading your teacher’s notes and preparing your first lesson…" or "Writing your next lesson…" | Normal for up to about 25 s. Longer: the model call is waiting on a slow provider (up to 120 s per call). If the server was restarted mid-lesson, reload the page: it resumes an interrupted session by itself (code, not reproduced). Otherwise click **New session**. |
+| A session that keeps cycling through "Analyzing your learning patterns…" and the other lines | Normal for up to about 25 s. Longer: the model call is waiting on a slow provider (up to 120 s per call). If the server was restarted mid-lesson, reload the page: it resumes an interrupted session by itself (code, not reproduced). Otherwise click **New session**. |
 | "Running code is switched off on this server" or "The Java 17 runtime is not installed. Run: docker pull …" (code) | That language's Docker image is missing, or Docker is not running. Start Docker, then run the `docker pull` line it prints, or `python scripts/pull_runtimes.py java 17`. No restart needed: a failed check is retried after 30 seconds. |
 | The tutor does not remember you (code) | You signed in with a different account (a different name is a different student), or you deleted `run.db`. |
 | "Too many wrong passwords. Try again in N seconds." when signing in (code) | Five wrong passwords in 15 minutes lock that name for a minute. Wait, then try again. A forgotten password is reset by whoever runs the server: `python scripts/manage_accounts.py reset <name>`. |

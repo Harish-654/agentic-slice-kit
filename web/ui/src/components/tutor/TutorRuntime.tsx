@@ -106,7 +106,7 @@ export function TutorRuntime({
   onRestart: () => void
   children: (ready: boolean) => ReactNode
 }) {
-  const { snap, error, answerChoice, answerText, answerCode, dontKnow, setMode, setSource, fallback, choose, refresh } =
+  const { snap, error, answerChoice, answerText, answerCode, dontKnow, setMode, nextMode, setSource, fallback, choose, refresh } =
     useSession(sessionId)
   const status = snap?.status
   const canAnswer = status === 'waiting_student'
@@ -165,6 +165,7 @@ export function TutorRuntime({
               if (cur.confidence) void answerCode(code, cur.confidence, assisted)
             },
             setMode,
+            nextMode,
             setSource,
             fallback,
             choose,
@@ -177,7 +178,7 @@ export function TutorRuntime({
         : null,
     // The actions close over the session id only; the snapshot is what changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [snap, canAnswer, onRestart, docs, student, lessonId, cur.picked, cur.confidence],
+    [snap, canAnswer, nextMode, onRestart, docs, student, lessonId, cur.picked, cur.confidence],
   )
 
   return (

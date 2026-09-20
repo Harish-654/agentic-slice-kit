@@ -62,7 +62,7 @@ export const LoginScreen: FC = () => {
       <div className="w-full max-w-md">
         <div className="text-route mb-6 flex items-center justify-center gap-2.5">
           <Mark className="size-9" />
-          <span className="font-heading text-foreground text-xl font-semibold">Tutor</span>
+          <span className="font-heading text-foreground text-xl font-semibold">Strata</span>
         </div>
         <Card className="shadow-[var(--shadow-page)]">
           <CardContent>

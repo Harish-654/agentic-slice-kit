@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FC, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FC, type FormEvent } from 'react'
 import { FileTextIcon, Loader2Icon, PaperclipIcon, XIcon } from 'lucide-react'
 import { ActivityHeatmap } from '@/components/activity/ActivityHeatmap'
 import { CheckInCard } from '@/components/activity/CheckInCard'
 import { LearningDashboard } from '@/components/dashboard/LearningDashboard'
 import { StreakChip } from '@/components/activity/StreakChip'
 import { MasteryRing } from '@/components/atlas/MasteryRing'
+import { HomeTabs, type Home } from '@/components/shell/HomeTabs'
 import { Mark } from '@/components/shell/Mark'
 import { SignOutButton } from '@/components/shell/SignOutButton'
 import { ThemeToggle } from '@/components/shell/ThemeToggle'
@@ -17,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ApiError, api } from '@/lib/api'
 
 const split = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
+const fromHash = (): Home => (window.location.hash === '#dashboard' ? 'dashboard' : 'learn')
 
 /** `student` is whoever is signed in; the tutor never asks for a name any more. */
 export const StartScreen: FC<{
@@ -35,6 +37,16 @@ export const StartScreen: FC<{
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pick = useRef<HTMLInputElement>(null)
+  // Learn is the form; Dashboard is what the student has already learnt. The choice lives in the URL, like the session's views.
+  const [tab, setTab] = useState<Home>(fromHash)
+  const go = useCallback((t: Home) => {
+    setTab(t)
+    try {
+      window.history.replaceState(null, '', t === 'learn' ? window.location.pathname : `#${t}`)
+    } catch {
+      /* fine */
+    }
+  }, [])
 
   const haveDocs = files.length > 0 || sample || existing.length > 0
   // Guided mode takes one topic, or a pasted exam question that names its own topic.
@@ -47,9 +59,10 @@ export const StartScreen: FC<{
     api.docs(student).then((r) => setExisting(r.docs), () => setExisting([]))
   }, [student])
 
-  /** "Study again" on a dashboard card: put that topic in the box, and take the student to it. */
+  /** "Study again" on a dashboard card: back to Learn, with that topic in the box and the cursor in it. */
   function study(topic: string) {
     setTopics(topic)
+    go('learn')
     requestAnimationFrame(() => {
       const box = document.getElementById('topics')
       box?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -90,13 +103,14 @@ export const StartScreen: FC<{
           <SignOutButton />
         </div>
       </div>
-      {/* Returning students see what they have learnt first; a new student has nothing to show, so nothing is drawn. */}
-      <LearningDashboard onStudy={study} />
+      <HomeTabs tab={tab} onChange={go} />
+      {/* Learn stays mounted while the other tab is open, so a half-typed topic or chosen files are still there on return. */}
+      <div id="panel-learn" role="tabpanel" aria-labelledby="home-tab-learn" hidden={tab !== 'learn'}>
       <div className="grid items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-16">
       <div className="max-w-xl">
         <div className="text-route flex items-center gap-2.5">
           <Mark className="size-9" />
-          <span className="font-heading text-foreground text-xl font-semibold">Tutor</span>
+          <span className="font-heading text-foreground text-xl font-semibold">Strata</span>
         </div>
         <p className="eyebrow mt-10">Begin an expedition</p>
         <h1 className="mt-2 text-4xl leading-[1.08] font-semibold sm:text-5xl">What do you want to learn?</h1>
@@ -280,6 +294,14 @@ export const StartScreen: FC<{
         <CheckInCard />
         <ActivityHeatmap />
       </div>
+      </div>
+
+      {/* Mounted only while open, so it reads fresh data every time. */}
+      {tab === 'dashboard' ? (
+        <div id="panel-dashboard" role="tabpanel" aria-labelledby="home-tab-dashboard" className="pb-12">
+          <LearningDashboard onStudy={study} onStart={() => go('learn')} />
+        </div>
+      ) : null}
     </div>
   )
 }

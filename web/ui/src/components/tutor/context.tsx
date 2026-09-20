@@ -14,8 +14,11 @@ export type TutorApi = {
   submitChoice: () => void
   /** "I don't know": honest, never graded. */
   dontKnow: () => void
-  /** The type of the NEXT question; the one on screen is left alone. */
+  /** The type of the NEXT question; the one on screen is left alone. It can be asked for at any time: while a lesson is being
+   * written it waits and is sent when the lesson lands. */
   setMode: (mode: AnswerMode) => void
+  /** What the next question will be, counting a change still waiting to be sent. */
+  nextMode: AnswerMode
   /** Hand in a program for a code question. `assisted`: a suggestion chip helped write it. */
   submitCode: (code: string, assisted: boolean) => void
   setSource: (useDocs: boolean) => void

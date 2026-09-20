@@ -99,13 +99,51 @@ const TopicCard: FC<{ topic: LearningTopic; onStudy: (name: string) => void }> =
 
 /** What the student has already learnt, and which parts of each topic they have completed. It is worked out on
  * the server from their twin and past sessions, and shows nothing at all for a student with no history. */
-export const LearningDashboard: FC<{ onStudy: (topic: string) => void }> = ({ onStudy }) => {
+export const LearningDashboard: FC<{ onStudy: (topic: string) => void; onStart: () => void }> = ({ onStudy, onStart }) => {
   const [data, setData] = useState<Learning | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [tries, setTries] = useState(0)
   const [all, setAll] = useState(false)
   useEffect(() => {
-    api.learning().then(setData, () => setData(null)) // no dashboard is better than a broken one
-  }, [])
-  if (!data || data.topics.length === 0) return null
+    setFailed(false)
+    api.learning().then(setData, () => setFailed(true))
+  }, [tries])
+
+  if (failed)
+    return (
+      <section aria-labelledby="learning-title" className="pt-6">
+        <h2 id="learning-title" className="font-heading text-2xl font-semibold">
+          Your learning
+        </h2>
+        <p role="status" className="text-muted-foreground mt-3 text-sm">
+          Could not load your learning just now.
+        </p>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setTries((n) => n + 1)}>
+          Try again
+        </Button>
+      </section>
+    )
+  if (!data)
+    return (
+      <p role="status" className="text-muted-foreground pt-6 text-sm">
+        Loading your learning…
+      </p>
+    )
+  if (data.topics.length === 0)
+    return (
+      <section aria-labelledby="learning-title" className="pt-6">
+        <p className="eyebrow">Your learning</p>
+        <h2 id="learning-title" className="font-heading mt-1 text-2xl font-semibold sm:text-3xl">
+          Nothing here yet
+        </h2>
+        <p className="text-muted-foreground mt-2 max-w-prose">
+          Learn your first topic and it will show up here, with the parts you complete and the ideas that are due for review.
+        </p>
+        <Button type="button" className="mt-4" onClick={onStart}>
+          Start learning
+        </Button>
+      </section>
+    )
 
   const { totals, topics } = data
   const shown = all ? topics : topics.slice(0, SHOWN)

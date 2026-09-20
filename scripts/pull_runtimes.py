@@ -6,10 +6,10 @@ The tutor can teach a language without any of this; only RUNNING code needs its 
 missing simply has code running switched off (with the exact `docker pull` line to fix it). Images are never pulled
 while a student is waiting: the sandbox refuses to.
 
-    python scripts/pull_runtimes.py                  the default version of every language (about 1.5 GB)
+    python scripts/pull_runtimes.py                  the default version of every language (about 3.4 GB on disk)
     python scripts/pull_runtimes.py java             every version of Java
     python scripts/pull_runtimes.py java 17          just Java 17
-    python scripts/pull_runtimes.py --all            every version of every language (several GB)
+    python scripts/pull_runtimes.py --all            every version of every language (roughly 6 GB)
     python scripts/pull_runtimes.py --list           what would be pulled, and what is already here
     python scripts/pull_runtimes.py --wait           first wait (up to 2 minutes) for the Docker daemon to come up,
                                                      which the Codespace start-up uses because the daemon starts a

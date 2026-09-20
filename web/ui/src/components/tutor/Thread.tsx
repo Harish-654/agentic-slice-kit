@@ -1,4 +1,4 @@
-import { useEffect, type FC } from 'react'
+import { useEffect, useState, type FC } from 'react'
 import { AuiIf, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { m } from 'motion/react'
 import { ArrowUpIcon, ChevronDownIcon } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ChoicesCard, CodeTaskCard, DiagramView, EndCard, FeedbackCard, LessonHeader, NoticeCard, OpenQuestionCard, PlanMapCard, QuizCard } from './cards'
 import type { CardMsg, LessonMsg } from '@/lib/api'
+import { THINKING_MS, thinkingAt } from '@/lib/format'
 import { useCodeStatus } from '@/lib/useCodeStatus'
 import { useTutor } from './context'
 
@@ -54,23 +55,28 @@ const Message: FC = () => {
   return role === 'user' ? <UserMessage /> : <AssistantMessage />
 }
 
-/** Shown while the tutor is writing. The wording says what it is doing, because
- * a lesson takes ten seconds or more and a bare spinner reads as "stuck". */
+/** Shown while the tutor is writing. A lesson takes ten seconds or more and a bare spinner reads as "stuck", so the
+ * line changes every few seconds. Screen readers get one steady status instead of a new line every 2 seconds. Grading
+ * an answer keeps its own honest line, because that is exactly what is happening. */
 const Working: FC = () => {
   const { snap } = useTutor()
-  const started = snap.messages.some((m) => m.kind === 'lesson')
   const graded = snap.messages.at(-1)?.kind === 'answer'
-  const label = !started
-    ? 'Reading your teacher’s notes and preparing your first lesson…'
-    : graded
-      ? 'Checking your answer…'
-      : 'Writing your next lesson…'
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (graded) return
+    const t = setInterval(() => setTick((n) => n + 1), THINKING_MS)
+    return () => clearInterval(t)
+  }, [graded])
+  const label = graded ? 'Checking your answer…' : thinkingAt(tick * THINKING_MS)
   return (
-    <div className="text-muted-foreground flex items-center gap-3 text-sm" role="status" aria-live="polite">
+    <div className="text-muted-foreground flex items-center gap-3 text-sm" role="status">
       <m.span aria-hidden animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }} className="text-route inline-flex">
         <Mark className="size-6" />
       </m.span>
-      <span className="font-heading italic">{label}</span>
+      <span className="sr-only">{graded ? 'Checking your answer' : 'Preparing your lesson'}</span>
+      <m.span key={label} aria-hidden initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="font-heading italic">
+        {label}
+      </m.span>
     </div>
   )
 }
@@ -99,13 +105,14 @@ const TextAnswer: FC = () => {
 }
 
 const Footer: FC = () => {
-  const { snap, canAnswer, setMode, confidence } = useTutor()
+  const { snap, canAnswer, setMode, nextMode, confidence } = useTutor()
   // The box follows the question ON SCREEN; the switch is about the NEXT one.
   // In a guided session the check arrives in a card after "quiz me", not with the lesson.
   const lesson = snap.messages.findLast((m): m is LessonMsg | CardMsg => m.kind === 'lesson' || m.kind === 'card')
   const writing = canAnswer && lesson?.open != null
-  const nextWritten = snap.progress.answer_mode === 'text'
-  const nextProgram = snap.progress.answer_mode === 'code'
+  const nextWritten = nextMode === 'text'
+  const nextProgram = nextMode === 'code'
+  const finished = snap.status === 'complete' || snap.status === 'failed'
   const code = useCodeStatus(snap.progress.language.id, snap.progress.language.version)
   const wide = window.matchMedia('(min-width: 768px)').matches
   return (
@@ -116,10 +123,10 @@ const Footer: FC = () => {
           {confidence ? 'Write your answer, then press Enter.' : 'Say how sure you are, in the question above, to unlock this box.'}
         </p>
       ) : null}
-      {canAnswer && !writing && nextWritten ? (
+      {!finished && !writing && nextWritten ? (
         <p className="text-center text-xs text-muted-foreground">Your next question will be in your own words.</p>
       ) : null}
-      {canAnswer && nextProgram ? (
+      {!finished && nextProgram ? (
         <p className="text-center text-xs text-muted-foreground">Your next question will be a program to write.</p>
       ) : null}
       {/* Open on wide screens, where there is room and the switches should be seen; folded on a phone. */}
@@ -136,13 +143,13 @@ const Footer: FC = () => {
             <Label htmlFor="own-words" className="text-muted-foreground text-sm font-normal">
               Ask my next questions in my own words
             </Label>
-            <Switch id="own-words" checked={nextWritten} disabled={!canAnswer} onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')} />
+            <Switch id="own-words" checked={nextWritten} onCheckedChange={(on) => setMode(on ? 'text' : 'mcq')} />
           </div>
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="program-mode" className="text-muted-foreground text-sm font-normal">
               {code && !code.available ? 'Programs need the code sandbox (switched off here)' : 'Ask my next question as a program to write'}
             </Label>
-            <Switch id="program-mode" checked={nextProgram} disabled={!canAnswer || !code?.available} onCheckedChange={(on) => setMode(on ? 'code' : 'mcq')} />
+            <Switch id="program-mode" checked={nextProgram} disabled={!code?.available} onCheckedChange={(on) => setMode(on ? 'code' : 'mcq')} />
           </div>
         </CollapsibleContent>
       </Collapsible>
