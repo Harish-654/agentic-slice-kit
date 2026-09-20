@@ -101,7 +101,7 @@ available in this Codespace", the rebuild has not happened yet.
 setup above.** Treat this paragraph as untested until someone has rebuilt a Codespace
 and run `python -m pytest -m integration` in it.
 
-**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally; this was at an earlier commit, before sign-in and the code sandbox, and the suite has since grown to 469 tests). Fresh `git clone` of `main`, a brand-new venv,
+**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally; this was at an earlier commit, before sign-in and the code sandbox, and the suite has since grown to 493 tests). Fresh `git clone` of `main`, a brand-new venv,
 Python 3.14.7, Linux, no `.env`, no `run.db`, no `uploads/`. Every command above
 ran as written. `pip install` finished cleanly.
 `python -m pytest -k "not integration"` gives **148 passed, 3 deselected** in
@@ -240,6 +240,14 @@ and the offline tests; the model's wording will vary.
    screen, under the form) fills in. A day counts if you answered a question or ran
    your own code, in your own timezone.
 
+10. **See what you have learnt.** Click **New session** to get back to the start
+    screen. Once you have any history, the first thing on it is **Your learning**:
+    four figures (topics learnt, parts completed, ideas to review, sessions) and a
+    card for each topic you have studied, newest first. A guided topic's card shows
+    how many of its parts you have done and lists each one as **Got it**, **Learning**,
+    **Review due** or **New**, with what the topic builds on. **Study again** puts that
+    topic in the box below. A brand-new account has no history, so it sees no dashboard.
+
 **The progress panel** (right side) shows **What you know**: one percentage per topic,
 `0%` and "not started" until you answer something, "Got it" at 75% or more, and
 "Review due" when a topic you had learnt has slid back below 75% with time.
@@ -254,7 +262,10 @@ lesson, on every topic) is the one place a language is chosen: a **Language** an
 **Version** picker above the editor. The choice is remembered for next time. It changes
 what the editor runs and what the *next program question* is written in. It never changes
 what a lesson is about: lessons, quizzes, plans and grading follow the topic, and the start
-screen asks only what you want to learn.
+screen asks only what you want to learn. Name a language in the topic ("inheritance in
+C++") and every part of a guided lesson is written in it, because your own words travel with
+each part (a part's id, like `virtual-functions`, has lost the language). If you name none,
+lessons use Python. A plan made for one language is not reused for another.
 
 | Language | Versions (default first) | Runs in |
 |---|---|---|
@@ -358,6 +369,13 @@ judged on".
   a day counts as a check-in if the student did at least one, in the student's
   own timezone. The 🔥 streak is the number of days in a row; it stays alive
   until midnight, then breaks if a whole day is missed.
+- **The "Your learning" dashboard** also needs nothing stored. It reads the student's
+  twin (how well they know each idea now, with forgetting) and their past sessions
+  (each one's topic and, for a guided one, its plan). A part counts as completed once
+  the student reached the bar on it, and reads "Review due" if it has since faded. A
+  topic whose final check was passed stays "Learnt". Only the newest 200 sessions and
+  30 topics are read, and mastery is shared across languages, so an idea learnt in
+  Python counts under the same idea in Java.
 - Stop the server with Ctrl+C in its terminal. Ports: 8001 in the command above
   (any free port works: change `--port` and the address); 8000 in Codespaces. By
   default the server listens on 127.0.0.1, so only your own machine can reach it.
@@ -403,7 +421,7 @@ What a judge would read:
   streak and the heatmap, worked out from records that already exist).
 - [`web/ui/`](web/ui/): the chat page's source (React, Vite, Tailwind, shadcn/ui,
   assistant-ui). The built files are committed in `web/ui/dist/`.
-- [`tests/`](tests/): 469 tests; `test_tutor*.py` cover the tutor. 40 of them
+- [`tests/`](tests/): 493 tests; `test_tutor*.py` cover the tutor. 40 of them
   (37 in `test_tutor_runtimes.py`, one each in `test_tutor_coach.py`,
   `test_tutor_probe_code.py` and `test_tutor_program.py`) need Docker
   and are marked `integration`; `python -m pytest -m "not integration"` skips them.

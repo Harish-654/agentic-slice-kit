@@ -338,6 +338,15 @@ counts as "fairly sure", which is the original 0.5 / 0.5 rule.
    `web/auth.py`). Still missing: email, so a forgotten password is reset by whoever runs
    the server (`scripts/manage_accounts.py`), and a teacher role.
 
+### The learning dashboard
+
+The start screen opens with what the student has already learnt: each topic they have studied, newest
+first, and which of its parts they have completed. Nothing is stored for it (`demo/tutor/dashboard.py`,
+`GET /api/me/learning`): it reads the student's twin and their past sessions' plans. A part counts as
+completed once the student reached the 75% bar on it, and reads "Review due" if it has since faded. A topic
+whose final check was passed stays "Learnt", with the number of its faded ideas shown beside it. Only the newest
+200 sessions and 30 topics are read.
+
 ### Supported languages
 
 Python 3.9 to 3.13, JavaScript (Node 18, 20, 22), Java 8, 11, 17, 21 and C++11 to C++23. One
@@ -351,6 +360,13 @@ commands and limits; the sandbox, the prompts and the API all read it.
   (`LANGUAGE: Java 17. ... use only features that exist in that version`), and it is
   recorded on that lesson so the question is checked and graded in the language it was
   written in, even if the picker moves on. Route: `POST /api/sessions/{id}/language`.
+- **A lesson's language is the one the student typed.** Concept ids are language-free on
+  purpose (mastery is shared across languages), so the parts of a guided topic
+  (`virtual-functions`) have lost the language. The student's own words ("inheritance in
+  C++", or a pasted exam question) travel with every teach and probe call as
+  `THE STUDENT ASKED TO LEARN: ...`, and the prompts say to write code in the language it
+  names and never switch (Python if it names none). A cached plan is keyed with the language
+  words kept, so "in Java" and "in Python" do not share one.
 - **How a program is judged.** Python keeps function-style questions (`call` and the
   `repr` of the result). Every other language reads input and prints output
   (`style: "stdio"`), compared line by line ignoring trailing whitespace. Either way no

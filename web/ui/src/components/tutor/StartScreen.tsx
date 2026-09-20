@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FC, type FormEvent } from 'react'
 import { FileTextIcon, Loader2Icon, PaperclipIcon, XIcon } from 'lucide-react'
 import { ActivityHeatmap } from '@/components/activity/ActivityHeatmap'
 import { CheckInCard } from '@/components/activity/CheckInCard'
+import { LearningDashboard } from '@/components/dashboard/LearningDashboard'
 import { StreakChip } from '@/components/activity/StreakChip'
 import { MasteryRing } from '@/components/atlas/MasteryRing'
 import { Mark } from '@/components/shell/Mark'
@@ -46,6 +47,16 @@ export const StartScreen: FC<{
     api.docs(student).then((r) => setExisting(r.docs), () => setExisting([]))
   }, [student])
 
+  /** "Study again" on a dashboard card: put that topic in the box, and take the student to it. */
+  function study(topic: string) {
+    setTopics(topic)
+    requestAnimationFrame(() => {
+      const box = document.getElementById('topics')
+      box?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      box?.focus()
+    })
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!ready) return
@@ -79,6 +90,8 @@ export const StartScreen: FC<{
           <SignOutButton />
         </div>
       </div>
+      {/* Returning students see what they have learnt first; a new student has nothing to show, so nothing is drawn. */}
+      <LearningDashboard onStudy={study} />
       <div className="grid items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-16">
       <div className="max-w-xl">
         <div className="text-route flex items-center gap-2.5">

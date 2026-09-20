@@ -26,7 +26,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from demo.tutor import activity, coach, languages, learner, learners, library, sandbox, session, visuals
+from demo.tutor import activity, coach, dashboard, languages, learner, learners, library, sandbox, session, visuals
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
@@ -287,15 +287,9 @@ def _progress(s: Store, run_id: str) -> dict:
     plan = inp.get("plan")
     rows = []
     for c in concepts:
-        eff = learner.effective_mastery(model, c)
         rows.append({
             "concept": c,
-            "mastery": round(eff, 3),
-            "mastered": eff >= learner.MASTERY,
-            "seen": c in model.mastery,
-            # learnt before, since slid back below the bar: a review, not a first pass
-            "review_due": c in model.mastery and eff < learner.MASTERY
-                          and model.mastery[c] >= learner.MASTERY,
+            **learner.standing(model, c),
             "beliefs": sorted(model.concept_misconceptions.get(c, {}).items(),
                               key=lambda kv: -kv[1]),
         })
@@ -520,6 +514,13 @@ def my_activity(tz: int = 0, s: Store = Depends(get_store), user: str | None = D
     if user is None:                                     # login off (tests): there is nobody to report on
         return activity.report(s, "", tz)
     return activity.report(s, user, tz)
+
+
+@router.get("/me/learning")
+def my_learning(s: Store = Depends(get_store), user: str | None = Depends(current_student)):
+    """What the signed-in student has learnt: each topic they have studied, and which of its parts they have
+    completed. Worked out from their twin and past sessions; nothing is stored for it."""
+    return dashboard.report(s, user or "")            # login off (tests): nobody's, so empty
 
 
 @router.get("/languages")

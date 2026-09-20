@@ -45,6 +45,15 @@ def effective_mastery(m: LearnerModel, concept: str, now: float | None = None) -
     return START + (stored - START) * 0.5 ** (days / HALF_LIFE_DAYS)
 
 
+def standing(m: LearnerModel, concept: str, now: float | None = None) -> dict:
+    """Where the student stands on one idea right now: the four facts the route and the dashboard both show.
+    `review_due` means learnt before and since slid back below the bar: a review, not a first pass."""
+    eff = effective_mastery(m, concept, now)
+    seen = concept in m.mastery
+    return {"mastery": round(eff, 3), "mastered": eff >= MASTERY, "seen": seen,
+            "review_due": seen and eff < MASTERY and m.mastery[concept] >= MASTERY}
+
+
 def pick_concept(m: LearnerModel, concepts: list[str], now: float | None = None) -> str | None:
     """Weakest unmastered concept first, in the order given on a tie. None means
     everything is mastered and nothing is due for review."""

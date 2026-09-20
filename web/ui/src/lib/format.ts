@@ -13,3 +13,13 @@ export const STYLE_LABEL: Record<string, string> = {
   probe: 'Quick check',
   final: 'Final check',
 }
+
+/** "today", "yesterday", "5 days ago", "2 months ago": how long since a moment given in epoch seconds. */
+export function timeAgo(seconds: number, now: number = Date.now() / 1000): string {
+  const days = Math.floor((now - seconds) / 86400)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days} days ago`
+  const months = Math.floor(days / 30)
+  return months === 1 ? '1 month ago' : `${months} months ago`
+}

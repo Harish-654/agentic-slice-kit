@@ -219,6 +219,8 @@ def test_nothing_is_reachable_without_signing_in(app):
                                ("post", "/api/sessions/run_x/code", {"code": "1"}), ("post", "/api/sessions/run_x/suggest", {"code": "1"}),
                                ("get", "/api/students/asha/docs", None), ("delete", "/api/students/asha/docs/x", None),
                                ("post", "/api/students/asha/docs/sample", None), ("get", "/api/code/status", None),
+                               ("get", "/api/me/activity", None), ("get", "/api/me/learning", None), ("get", "/api/languages", None),
+                               ("post", "/api/sessions/run_x/language", {"language": "java"}),
                                ("get", "/api/auth/me", None)):
         r = getattr(c, method)(path, **({"json": body} if body is not None else {}))
         assert r.status_code == 401, (method, path, r.status_code)

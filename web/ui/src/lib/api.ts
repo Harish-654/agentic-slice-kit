@@ -181,6 +181,29 @@ export type Activity = {
   total: number
 }
 
+/** Where a student stands on one idea: the same four words the route uses. */
+export type IdeaBand = 'new' | 'learning' | 'review' | 'got-it'
+export type LearningIdea = { concept: string; mastery: number; band: IdeaBand }
+/** `learnt`: the final check was passed or the idea is at the bar. `review`: it was, and has since faded. */
+export type TopicState = 'new' | 'learning' | 'review' | 'learnt'
+export type LearningTopic = {
+  name: string // the student's own words for it
+  state: TopicState
+  last_studied: number // epoch seconds
+  sessions: number
+  due: number // ideas in this topic learnt before and since faded: a review, not a first pass
+  mastery: number // of the topic itself, 0 to 1
+  parts_done: number // parts that reached the bar, faded or not
+  parts_total: number // 0 for quick practice, which has no parts
+  parts: LearningIdea[]
+  prereqs: LearningIdea[]
+}
+/** What a student has learnt across every session. See demo/tutor/dashboard.py. */
+export type Learning = {
+  totals: { topics: number; learnt: number; parts_done: number; to_review: number; sessions: number }
+  topics: LearningTopic[] // newest first
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const json = typeof init?.body === 'string'
   const res = await fetch(`/api${path}`, {
@@ -214,6 +237,8 @@ export const api = {
   signOut: () => call<{ ok: boolean }>('/auth/logout', post({})),
   /** `tz` is the browser's offset, so a day is the student's own day. */
   activity: () => call<Activity>(`/me/activity?tz=${new Date().getTimezoneOffset()}`),
+  /** What they have learnt: each topic studied, and which of its parts are done. */
+  learning: () => call<Learning>('/me/learning'),
 
   start: (
     student: string,
