@@ -1,0 +1,394 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cognitive-twin tutor: system architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1130,
+      640
+    ],
+    "repository": {
+      "url": "https://github.com/Harish-654/agentic-slice-kit",
+      "provider": "github",
+      "revision": "b52b4c9643aef82b4daebb4bba1e12e02f4e57ad"
+    }
+  },
+  "components": [
+    {
+      "id": "student",
+      "type": "external",
+      "label": "Student",
+      "sublabel": "In a browser",
+      "pos": [
+        30,
+        90
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Atlas UI",
+      "sublabel": "React: study, twin, route",
+      "pos": [
+        30,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/ui/src/App.tsx",
+          "label": "App"
+        },
+        {
+          "path": "web/ui/src/features/session/Session.tsx",
+          "label": "Session"
+        }
+      ]
+    },
+    {
+      "id": "app",
+      "type": "backend",
+      "label": "Web app",
+      "sublabel": "FastAPI, one process",
+      "pos": [
+        260,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/student.py",
+          "label": "Serves UI, API, /classic"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Sign-in",
+      "sublabel": "scrypt, hashed cookie token",
+      "pos": [
+        260,
+        90
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/auth.py",
+          "label": "Routes and guard"
+        },
+        {
+          "path": "demo/tutor/accounts.py",
+          "label": "Accounts"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Tutor API",
+      "sublabel": "History to chat messages",
+      "pos": [
+        490,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/tutor_api.py",
+          "label": "Sessions, code, documents"
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Tutor engine",
+      "sublabel": "Teach, check, adapt",
+      "pos": [
+        720,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "demo/tutor/flow.py",
+          "label": "The loop and its back-edge"
+        },
+        {
+          "path": "slice/runner.py",
+          "label": "Kit runner"
+        }
+      ]
+    },
+    {
+      "id": "rules",
+      "type": "backend",
+      "label": "Rules in code",
+      "sublabel": "Steps, mastery, coach, maps",
+      "pos": [
+        720,
+        90
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "demo/tutor/steps.py",
+          "label": "What happens next"
+        },
+        {
+          "path": "demo/tutor/learner.py",
+          "label": "Mastery"
+        },
+        {
+          "path": "demo/tutor/coach.py",
+          "label": "Code hints"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "run.db",
+      "sublabel": "History, learners, accounts",
+      "pos": [
+        490,
+        510
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "slice/store.py",
+          "label": "Append-only store"
+        },
+        {
+          "path": "demo/tutor/learners.py",
+          "label": "One row per student"
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "type": "database",
+      "label": "Student documents",
+      "sublabel": "Files and local embeddings",
+      "pos": [
+        720,
+        510
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "demo/tutor/library.py",
+          "label": "Per-student search"
+        },
+        {
+          "path": "demo/tutor/notes.py",
+          "label": "PDF and Word to text"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM",
+      "sublabel": "OpenRouter",
+      "pos": [
+        950,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "slice/llm.py",
+          "label": "The one model call"
+        }
+      ]
+    },
+    {
+      "id": "sandbox",
+      "type": "security",
+      "label": "Code sandbox",
+      "sublabel": "Docker, no network",
+      "pos": [
+        950,
+        90
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "demo/tutor/sandbox.py",
+          "label": "Fails closed"
+        },
+        {
+          "path": "demo/tutor/languages.py",
+          "label": "Languages"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "One machine: Python process and its files",
+      "wraps": [
+        "auth",
+        "app",
+        "api",
+        "engine",
+        "rules",
+        "store",
+        "docs"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Fail-closed sandbox",
+      "wraps": [
+        "sandbox"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "opens",
+      "from": "student",
+      "to": "ui"
+    },
+    {
+      "id": "polls",
+      "from": "ui",
+      "to": "app",
+      "label": "JSON + cookie"
+    },
+    {
+      "id": "who",
+      "from": "app",
+      "to": "auth",
+      "label": "who is signed in",
+      "variant": "security"
+    },
+    {
+      "id": "routes",
+      "from": "app",
+      "to": "api",
+      "label": "routes /api"
+    },
+    {
+      "id": "advance",
+      "from": "api",
+      "to": "engine",
+      "label": "advance run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "decide",
+      "from": "engine",
+      "to": "rules",
+      "label": "what next",
+      "labelDx": -45,
+      "labelDy": -50
+    },
+    {
+      "id": "write",
+      "from": "engine",
+      "to": "llm",
+      "label": "lesson, grade"
+    },
+    {
+      "id": "run",
+      "from": "engine",
+      "to": "sandbox",
+      "label": "run code",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "search",
+      "from": "engine",
+      "to": "docs",
+      "label": "scoped search",
+      "labelDy": 24
+    },
+    {
+      "id": "record",
+      "from": "engine",
+      "to": "store",
+      "label": "record history",
+      "variant": "dashed"
+    },
+    {
+      "id": "replay",
+      "from": "api",
+      "to": "store",
+      "label": "replay history",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Code decides, the model writes",
+      "items": [
+        "Steps, mastery, coach hints and concept maps are pure functions, not prompts.",
+        "The model only writes lessons and grades typed answers.",
+        "Every session ends with a recorded reason."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "State that persists",
+      "items": [
+        "run.db keeps append-only history, one learner row per student, and accounts.",
+        "Each student's own documents live in uploads/.",
+        "Mastery fades, so old topics come back for review."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Trust boundaries",
+      "items": [
+        "The answer key and rubric never reach the browser.",
+        "Student code runs only in a throwaway Docker container with no network.",
+        "Documents are searched only for the student who uploaded them."
+      ]
+    }
+  ]
+}
