@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cognitive-twin tutor: presentation notes</title>
+<style>
+  :root {
+    --bg: #f6f1e6; --paper: #fffdf8; --ink: #2b2119; --muted: #6b5f53; --line: #d9cfbe;
+    --accent: #b4532a; --accent-soft: #f7e6da; --indigo: #3b4bb0; --indigo-soft: #e6e9f9;
+    --green: #1f7a52; --green-soft: #dcf0e5; --code: #efe8da;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191612; --paper: #221e19; --ink: #f0e9dc; --muted: #b3a797; --line: #3d362c;
+      --accent: #ec946a; --accent-soft: #3a2a20; --indigo: #98a4f2; --indigo-soft: #252a47;
+      --green: #63cc9e; --green-soft: #1d3329; --code: #2c2720;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 var(--sans); }
+  a { color: var(--indigo); }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--paper); padding: 8px 12px; border-radius: 8px; z-index: 50; }
+  .skip:focus { left: 8px; }
+  nav.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  nav.top ul { list-style: none; margin: 0 auto; padding: 8px 16px; max-width: 1120px; display: flex; gap: 4px; overflow-x: auto; white-space: nowrap; }
+  nav.top a { display: block; padding: 6px 12px; border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 14px; }
+  nav.top a:hover, nav.top a:focus-visible { background: var(--accent-soft); outline: none; }
+  main { max-width: 1120px; margin: 0 auto; padding: 0 16px 80px; }
+  section { padding: 56px 0 8px; }
+  .eyebrow { font: 600 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  h1, h2, h3 { font-family: var(--serif); line-height: 1.15; margin: 0; }
+  h1 { font-size: clamp(2.4rem, 6vw, 4rem); letter-spacing: -.01em; }
+  h2 { font-size: clamp(1.7rem, 3.4vw, 2.4rem); margin-bottom: 14px; }
+  h3 { font-size: 1.25rem; margin: 26px 0 8px; }
+  p { margin: 0 0 14px; max-width: 74ch; }
+  .lead { font-size: 1.2rem; color: var(--muted); max-width: 62ch; }
+  code { font: 0.86em var(--mono); background: var(--code); padding: 1px 6px; border-radius: 6px; }
+  .path { color: var(--muted); font: 13px var(--mono); }
+  .hero { padding-top: 64px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; padding: 0; list-style: none; }
+  .chips li { background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .box { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
+  .box.accent { border-left: 6px solid var(--accent); }
+  .box.green { border-left: 6px solid var(--green); }
+  .box.indigo { border-left: 6px solid var(--indigo); }
+  .box > :last-child { margin-bottom: 0; }
+  .box h3:first-child { margin-top: 0; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin: 18px 0; }
+  .grid .box { padding: 18px 20px; }
+  .grid h3 { font-size: 1.1rem; margin: 0 0 6px; }
+  .grid p { font-size: 15px; color: var(--muted); }
+  .steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 18px 0; }
+  .steps li { counter-increment: s; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px 16px; position: relative; }
+  .steps li::before { content: counter(s); position: absolute; top: -12px; left: 16px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font: 700 14px/26px var(--sans); text-align: center; }
+  .steps b { display: block; font-family: var(--serif); font-size: 1.1rem; margin-bottom: 4px; }
+  .steps span { font-size: 15px; color: var(--muted); }
+  .figure { margin: 22px 0 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 14px; overflow-x: auto; }
+  .figure svg { display: block; width: 100%; min-width: 860px; height: auto; }
+  .figure.small svg { min-width: 520px; max-width: 640px; margin: 0 auto; }
+  figcaption { font-size: 14px; color: var(--muted); margin: 8px 6px 2px; }
+  .scroll { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--code); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; width: 22%; }
+  .no { color: var(--muted); }
+  .yes { color: var(--ink); }
+  ol.turn { padding-left: 0; list-style: none; display: grid; gap: 10px; margin: 16px 0; }
+  ol.turn li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+  ol.turn .n { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font: 700 14px/28px var(--sans); text-align: center; }
+  .two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+  .q { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; margin: 10px 0; }
+  .q summary { cursor: pointer; padding: 14px 18px; font-weight: 600; list-style: none; display: flex; gap: 10px; justify-content: space-between; }
+  .q summary::after { content: "+"; color: var(--accent); font-size: 1.3em; line-height: 1; }
+  .q[open] summary::after { content: "\2212"; }
+  .q summary:focus-visible { outline: 3px solid var(--indigo); outline-offset: 2px; border-radius: 12px; }
+  .q div { padding: 0 18px 6px; color: var(--ink); }
+  .script { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 14px; }
+  .script li { display: grid; grid-template-columns: 92px 1fr; gap: 16px; }
+  .script time { font: 600 13px var(--mono); color: var(--accent); padding-top: 4px; }
+  .script blockquote { margin: 0; background: var(--paper); border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 12px; padding: 12px 16px; font-size: 16px; }
+  .script blockquote p { margin: 0 0 8px; max-width: none; }
+  .script blockquote p:last-child { margin: 0; }
+  .script .cue { display: block; font: 13px var(--mono); color: var(--muted); margin-bottom: 4px; }
+  .tag { display: inline-block; font: 600 11px var(--mono); letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .tag.g { background: var(--green-soft); color: var(--green); }
+  .tag.i { background: var(--indigo-soft); color: var(--indigo); }
+  .opts { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+  .opts li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--bg); font-size: 15px; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 56px; }
+
+  /* the drawings */
+  .layer { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; }
+  .core { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+  .tool { fill: var(--indigo-soft); stroke: var(--indigo); stroke-width: 1.5; }
+  .mem { fill: var(--green-soft); stroke: var(--green); stroke-width: 1.5; }
+  .chip { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+  .panel { fill: var(--paper); stroke: var(--accent); stroke-width: 1.2; }
+  .step { fill: var(--paper); stroke: var(--ink); stroke-width: 1.6; }
+  .step.human { stroke-dasharray: 6 4; stroke: var(--indigo); stroke-width: 2; }
+  .decide { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.4; }
+  .pill { fill: var(--paper); stroke-width: 2; }
+  .lbl { font: 600 12px var(--mono); letter-spacing: .08em; fill: var(--muted); }
+  .ttl { font: 700 15px var(--sans); fill: var(--ink); }
+  .ttl.acc { fill: var(--accent); }
+  .ttl.ind { fill: var(--indigo); }
+  .txt { font: 13.5px var(--sans); fill: var(--ink); }
+  .sub { font: 12.5px var(--sans); fill: var(--muted); }
+  .tg { font: 600 10px var(--mono); letter-spacing: .08em; fill: var(--muted); }
+  .arrow { stroke: var(--ink); stroke-width: 1.8; fill: none; }
+  .back { stroke: var(--accent); stroke-width: 3.2; fill: none; }
+  .bus { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .mk { fill: var(--ink); } .mkb { fill: var(--accent); }
+  .badge { fill: var(--accent); }
+  .badge-t { font: 700 12px var(--sans); fill: #fff; text-anchor: middle; }
+  .axis { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .grid-l { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+  .curve { stroke: var(--accent); stroke-width: 3.4; fill: none; }
+
+  @media (max-width: 640px) { .script li { grid-template-columns: 1fr; gap: 4px; } body { font-size: 16px; } }
+  @media print {
+    body { background: #fff; font-size: 12pt; } nav.top { display: none; }
+    section { break-inside: avoid-page; padding-top: 24px; } .figure { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#pitch">Skip to the content</a>
+<nav class="top" aria-label="Sections">
+  <ul>
+    <li><a href="#pitch">Pitch</a></li>
+    <li><a href="#problem">Problem</a></li>
+    <li><a href="#does">What it does</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#agentic">Why it is agentic</a></li>
+    <li><a href="#unique">What is unique</a></li>
+    <li><a href="#proof">Proof</a></li>
+    <li><a href="#script">5-minute script</a></li>
+    <li><a href="#qa">Judge questions</a></li>
+    <li><a href="#limits">Limits</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ============================================================ PITCH -->
+<section id="pitch" class="hero">
+  <p class="eyebrow">Presentation notes</p>
+  <h1>Cognitive-twin tutor</h1>
+  <p class="lead">A tutor for any topic that remembers what each student gets wrong, teaches the next lesson a different way, and knows when to stop and ask. <strong>Code decides what happens next. The model only writes.</strong></p>
+  <ul class="chips" aria-label="Key facts">
+    <li>462 automated tests</li>
+    <li>4 languages, 17 versions, in a locked-down code sandbox</li>
+    <li>The answer key never leaves the server</li>
+    <li>Runs fully offline on a scripted model</li>
+    <li>Built on the Agentic Slice Kit</li>
+  </ul>
+
+  <div class="box accent" style="margin-top:28px">
+    <p class="eyebrow">If you only get 30 seconds</p>
+    <p>Chat assistants explain, but they do not remember. Our tutor keeps a <strong>cognitive twin</strong> of every student: what they know, how well, how recently, and which specific wrong ideas they hold. Every wrong option in a quiz is written to stand for <em>one</em> wrong idea, so a wrong answer does not just say "wrong", it names the misunderstanding. The tutor then goes back and teaches the same topic a different way, aimed at that idea, and remembers it next week.</p>
+  </div>
+</section>
+
+<!-- ============================================================ PROBLEM -->
+<section id="problem">
+  <p class="eyebrow">The problem</p>
+  <h2>A correct explanation that never fixes the belief</h2>
+  <div class="two">
+    <div>
+      <p>A student asks a chat assistant why a Python function's list default "keeps growing". The answer is correct and fluent. The student nods.</p>
+      <p>Three weeks later, in a lab test, they write <code>def add(item, bucket=[])</code> again. They came away believing the default is copied fresh on every call, and the explanation never touched that belief. Nothing in their history said they had held it before.</p>
+      <p class="path">From <code>demo/tutor/TUTOR-SPEC.md</code>, section 2.</p>
+    </div>
+    <div class="box">
+      <h3>Three gaps in a general chat assistant</h3>
+      <ol style="margin:0; padding-left:20px">
+        <li><strong>No memory of you.</strong> It cannot tell that this student keeps believing the same wrong thing, so it explains the same way each time.</li>
+        <li><strong>It cannot name the belief.</strong> "Wrong" is not a diagnosis.</li>
+        <li><strong>Its source is the whole internet.</strong> The student cannot tell what their own teacher would accept.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ WHAT IT DOES -->
+<section id="does">
+  <p class="eyebrow">What it does</p>
+  <h2>A student's session, in six steps</h2>
+  <ol class="steps">
+    <li><b>Sign in</b><span>An account with a name and a password. Progress and documents belong to that account only.</span></li>
+    <li><b>Say what to learn</b><span>Any topic in the student's own words, or paste an exam question. Optionally attach their teacher's notes as the source of truth.</span></li>
+    <li><b>It plans</b><span>What the topic builds on, and its parts. A concept map shows the route.</span></li>
+    <li><b>It checks before it explains</b><span>A quick question on each prerequisite. Right: skipped. Wrong or "I don't know": taught.</span></li>
+    <li><b>Explain, then check</b><span>A short lesson. The student chooses: quiz me, another example, more detail, go deeper, skip. The check is multiple choice, own words, or a program. They say how sure they are.</span></li>
+    <li><b>Final check</b><span>One written question that needs several parts at once. Then the twin is updated and the day counts towards their streak.</span></li>
+  </ol>
+
+  <h3>Also in the box</h3>
+  <div class="grid">
+    <div class="box"><h3>The twin, in plain view</h3><p>A Twin tab shows what the tutor believes about the student and which wrong ideas it is watching. Nothing is hidden.</p></div>
+    <div class="box"><h3>Their own notes, with citations</h3><p>Teach only from the student's documents, citing them. A topic the notes do not cover is not guessed: the student chooses.</p></div>
+    <div class="box"><h3>Confidence counts</h3><p>"Just guessing", "Fairly sure", "Certain". Certain and wrong costs the most. "I don't know" is honest, never a wrong belief.</p></div>
+    <div class="box"><h3>A code sandbox</h3><p>Run your own code beside any lesson in Python, JavaScript, Java or C++. Program questions are graded on hidden tests.</p></div>
+    <div class="box"><h3>Streak and activity heatmap</h3><p>A 🔥 streak and a year-long heatmap, worked out from records that already exist. Nothing extra is stored.</p></div>
+    <div class="box"><h3>Sign-in that keeps students apart</h3><p>Hashed passwords, and every session and document is locked to its owner.</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ ARCHITECTURE -->
+<section id="architecture">
+  <p class="eyebrow">Architecture</p>
+  <h2>How it fits together</h2>
+  <p class="lead">Read the picture top to bottom. The student never talks to the model directly. Everything passes through one loop, and the loop only acts on what the database says.</p>
+
+  <figure class="figure" style="margin-bottom:0">
+    <svg viewBox="0 0 1100 764" role="img" aria-labelledby="arch-t arch-d">
+      <title id="arch-t">Architecture of the cognitive-twin tutor</title>
+      <desc id="arch-d">Four layers from top to bottom: the student's browser, the API, the agent loop, and a memory database. The agent loop has a code-decides half, a model-writes half and a part that suspends to ask a human. Four tools sit to the right of the loop: a language model, note search, a code sandbox and a diagram gate. Arrows are numbered one to five in the order a single answer travels.</desc>
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="mk"/></marker>
+      </defs>
+
+      <!-- 1 browser -->
+      <rect class="layer" x="30" y="16" width="1040" height="122" rx="14"/>
+      <text class="lbl" x="52" y="42">1 · THE STUDENT'S BROWSER</text>
+      <text class="sub" x="1048" y="42" text-anchor="end">React + Vite, served by the same Python process</text>
+      <rect class="chip" x="50" y="54" width="196" height="66" rx="10"/><text class="ttl" x="66" y="81">Study</text><text class="sub" x="66" y="102">lesson, check, feedback</text>
+      <rect class="chip" x="258" y="54" width="196" height="66" rx="10"/><text class="ttl" x="274" y="81">Twin</text><text class="sub" x="274" y="102">what the tutor believes</text>
+      <rect class="chip" x="466" y="54" width="196" height="66" rx="10"/><text class="ttl" x="482" y="81">Route</text><text class="sub" x="482" y="102">concept map, progress</text>
+      <rect class="chip" x="674" y="54" width="196" height="66" rx="10"/><text class="ttl" x="690" y="81">Code sandbox</text><text class="sub" x="690" y="102">pick a language, run code</text>
+      <rect class="chip" x="882" y="54" width="168" height="66" rx="10"/><text class="ttl" x="898" y="81">Streak</text><text class="sub" x="898" y="102">🔥 and heatmap</text>
+
+      <line class="arrow" x1="200" y1="138" x2="200" y2="178" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <circle class="badge" cx="200" cy="158" r="11"/><text class="badge-t" x="200" y="162.5">1</text>
+      <text class="sub" x="222" y="163">answer + sign-in cookie, as JSON</text>
+
+      <!-- 2 API -->
+      <rect class="layer" x="30" y="178" width="1040" height="92" rx="14"/>
+      <text class="lbl" x="52" y="203">2 · THE API (FASTAPI)</text>
+      <rect class="chip" x="50" y="214" width="320" height="42" rx="10"/><text class="txt" x="66" y="240">Who are you? Sign-in and ownership checks</text>
+      <rect class="chip" x="386" y="214" width="320" height="42" rx="10"/><text class="txt" x="402" y="240">The answer key never leaves the server</text>
+      <rect class="chip" x="722" y="214" width="320" height="42" rx="10"/><text class="txt" x="738" y="240">One background thread per session</text>
+
+      <line class="arrow" x1="200" y1="270" x2="200" y2="300" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <circle class="badge" cx="200" cy="285" r="11"/><text class="badge-t" x="200" y="289.5">2</text>
+      <text class="sub" x="222" y="290">hands the answer to the run</text>
+
+      <!-- 3 the loop -->
+      <rect class="core" x="30" y="300" width="740" height="314" rx="14"/>
+      <text class="lbl" x="52" y="326" style="fill:var(--accent)">3 · THE AGENT LOOP: A STATE MACHINE</text>
+      <text class="sub" x="750" y="326" text-anchor="end">slice/runner.py + demo/tutor/flow.py</text>
+
+      <rect class="panel" x="50" y="344" width="350" height="250" rx="12"/>
+      <circle class="badge" cx="72" cy="368" r="11"/><text class="badge-t" x="72" y="372.5">4</text>
+      <text class="ttl acc" x="92" y="373">CODE DECIDES</text>
+      <text class="txt" x="68" y="408">•  Next topic, probe or final check</text>
+      <text class="txt" x="68" y="438">•  Grades multiple choice: no model call</text>
+      <text class="txt" x="68" y="468">•  Updates the twin after every answer</text>
+      <text class="txt" x="68" y="498">•  Picks the next teaching style</text>
+      <text class="txt" x="68" y="528">•  Stops at the caps: tokens, steps, revisions</text>
+      <text class="sub" x="68" y="572">Plain functions, tested in microseconds</text>
+
+      <rect class="panel" x="420" y="344" width="330" height="126" rx="12" style="stroke:var(--indigo)"/>
+      <text class="ttl ind" x="438" y="372">MODEL WRITES</text>
+      <text class="txt" x="438" y="396">•  Lessons, in a chosen style</text>
+      <text class="txt" x="438" y="416">•  Questions: each wrong option = one belief</text>
+      <text class="txt" x="438" y="436">•  Study plans and final checks</text>
+      <text class="txt" x="438" y="456">•  Grades own-words answers</text>
+
+      <rect class="panel" x="420" y="482" width="330" height="112" rx="12" style="stroke-dasharray:6 4"/>
+      <text class="ttl" x="438" y="508" style="font-size:13.5px">SUSPENDS TO ASK A HUMAN</text>
+      <text class="txt" x="438" y="532" style="font-size:12.5px">•  Asks the student, then waits</text>
+      <text class="txt" x="438" y="552" style="font-size:12.5px">•  State is in the database, not the process</text>
+      <text class="txt" x="438" y="572" style="font-size:12.5px">•  Nobody answers in 24 h: the run ends</text>
+
+      <!-- tools -->
+      <text class="lbl" x="802" y="292">TOOLS IT CALLS</text>
+      <rect class="tool" x="800" y="300" width="270" height="71" rx="12"/><text class="ttl ind" x="816" y="324">Language model</text><text class="sub" x="816" y="343">OpenRouter: main + fallback</text><text class="sub" x="816" y="359">JSON checked, one repair try</text>
+      <rect class="tool" x="800" y="381" width="270" height="71" rx="12"/><text class="ttl ind" x="816" y="405">Note search</text><text class="sub" x="816" y="424">the student's own documents</text><text class="sub" x="816" y="440">every citation checked in code</text>
+      <rect class="tool" x="800" y="462" width="270" height="71" rx="12"/><text class="ttl ind" x="816" y="486">Code sandbox</text><text class="sub" x="816" y="505">Docker: no network, read-only</text><text class="sub" x="816" y="521">Python · JavaScript · Java · C++</text>
+      <rect class="tool" x="800" y="543" width="270" height="71" rx="12"/><text class="ttl ind" x="816" y="567">Diagram gate</text><text class="sub" x="816" y="586">Mermaid drawings must pass</text><text class="sub" x="816" y="602">an allow-list first</text>
+      <line class="arrow" x1="770" y1="335" x2="800" y2="335" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <line class="arrow" x1="770" y1="416" x2="800" y2="416" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <line class="arrow" x1="770" y1="497" x2="800" y2="497" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <line class="arrow" x1="770" y1="578" x2="800" y2="578" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <circle class="badge" cx="785" cy="318" r="11"/><text class="badge-t" x="785" y="322.5">3</text>
+
+      <line class="arrow" x1="200" y1="614" x2="200" y2="644" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <circle class="badge" cx="200" cy="629" r="11"/><text class="badge-t" x="200" y="633.5">5</text>
+      <text class="sub" x="222" y="634">saved before the next step starts</text>
+
+      <!-- 4 memory -->
+      <rect class="mem" x="30" y="644" width="1040" height="104" rx="14"/>
+      <text class="lbl" x="52" y="670" style="fill:var(--green)">4 · MEMORY: ONE SQLITE FILE (run.db)</text>
+      <rect class="chip" x="50" y="684" width="320" height="52" rx="10"/><text class="ttl" x="66" y="706">History (append-only)</text><text class="sub" x="66" y="724">every lesson, answer, check: replayable</text>
+      <rect class="chip" x="386" y="684" width="320" height="52" rx="10"/><text class="ttl" x="402" y="706">Learners = the cognitive twin</text><text class="sub" x="402" y="724">mastery, forgetting, wrong ideas, confidence</text>
+      <rect class="chip" x="722" y="684" width="320" height="52" rx="10"/><text class="ttl" x="738" y="706">Accounts and uploads</text><text class="sub" x="738" y="724">hashed passwords, each student's notes</text>
+    </svg>
+    <figcaption>The whole system on one page. Terracotta = the agent loop. Indigo = tools it calls. Green = memory. The numbers are the path of one answer, listed below.</figcaption>
+  </figure>
+
+  <h3>One answer, end to end</h3>
+  <ol class="turn">
+    <li><span class="n">1</span><span><strong>The student answers</strong> in the browser (or asks for an example). The page only ever received the question, never the answer key.</span></li>
+    <li><span class="n">2</span><span><strong>The API checks who they are</strong> and drops the answer into the run. It does not grade anything itself.</span></li>
+    <li><span class="n">3</span><span><strong>The loop wakes up from the database.</strong> It grades: multiple choice by plain code, a program by hidden tests in the sandbox, an own-words answer by the model against a rubric.</span></li>
+    <li><span class="n">4</span><span><strong>Code updates the twin and decides what is next:</strong> another prerequisite, re-teach this topic in a different style, the next part, the final check, or stop.</span></li>
+    <li><span class="n">5</span><span><strong>Everything is saved</strong>, the model writes the next lesson, and the loop suspends to ask the student. Back to step 1.</span></li>
+  </ol>
+
+  <h3>Three design choices to point at</h3>
+  <div class="grid">
+    <div class="box"><h3>State lives in the database</h3><p>Not in a chat window, not in the process. Restart the server mid-lesson and the run resumes. The history is append-only, so any run can be replayed.</p></div>
+    <div class="box"><h3>Code decides, model writes</h3><p>Which step comes next, how mastery moves and when to stop are ordinary functions. The model is used where judgement or language is needed, inside a step.</p></div>
+    <div class="box"><h3>Every boundary is typed</h3><p>Model replies are parsed by schemas. A bad reply gets one repair pass, then the fallback model, then a visible, honest failure.</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ AGENTIC -->
+<section id="agentic">
+  <p class="eyebrow">Why it is agentic</p>
+  <h2>A workflow that can go backwards</h2>
+  <p class="lead">The organisers' own test: <em>"an agent is a workflow that can go backwards."</em> Straight through A, B, C is a pipeline, however many models are in it. Ours sends work back, and where it goes next depends on what the student's answer showed.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 1120 486" role="img" aria-labelledby="loop-t loop-d">
+      <title id="loop-t">The tutor's loop, and where it goes backwards</title>
+      <desc id="loop-d">A row of steps: plan, probe a prerequisite, explain, the student chooses, check, grade and update the twin, then a decision made by code. A thick arrow runs from the decision back to explain. Below the decision four outcomes: a wrong answer goes back and re-teaches in a new style; a right answer moves on; all parts done leads to a final check, which if failed re-teaches the weakest part; caps or the student stopping end the session with a reason.</desc>
+      <defs>
+        <marker id="ah2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="mk"/></marker>
+        <marker id="ahb" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="mkb"/></marker>
+      </defs>
+
+      <!-- the big back-edge -->
+      <path class="back" d="M1050 104 V62 H405 V106" marker-end="url(#ahb)"/>
+      <text class="ttl acc" x="728" y="50" text-anchor="middle" style="font-size:14px">THE BACK-EDGE: where the run goes next depends on what the answer showed</text>
+
+      <!-- main row -->
+      <rect class="step" x="20" y="108" width="128" height="86" rx="10"/><text class="tg" x="32" y="124">MODEL</text><text class="ttl" x="32" y="145">Plan</text><text class="sub" x="32" y="164">what the topic</text><text class="sub" x="32" y="180">builds on</text>
+      <rect class="step" x="176" y="108" width="134" height="86" rx="10"/><text class="tg" x="188" y="124">MODEL + SANDBOX</text><text class="ttl" x="188" y="145">Probe</text><text class="sub" x="188" y="164">test a prerequisite</text><text class="sub" x="188" y="180">BEFORE teaching it</text>
+      <rect class="step" x="338" y="108" width="134" height="86" rx="10"/><text class="tg" x="350" y="124">MODEL</text><text class="ttl" x="350" y="145">Explain</text><text class="sub" x="350" y="164">short lesson in</text><text class="sub" x="350" y="180">a chosen style</text>
+      <rect class="step human" x="500" y="108" width="160" height="86" rx="10"/><text class="tg" x="512" y="124" style="fill:var(--indigo)">HUMAN</text><text class="ttl" x="512" y="145">Student chooses</text><text class="sub" x="512" y="164">quiz me · example ·</text><text class="sub" x="512" y="180">more detail · deeper</text>
+      <rect class="step human" x="688" y="108" width="130" height="86" rx="10"/><text class="tg" x="700" y="124" style="fill:var(--indigo)">HUMAN</text><text class="ttl" x="700" y="145">Check</text><text class="sub" x="700" y="164">choice · own words</text><text class="sub" x="700" y="180">· or a program</text>
+      <rect class="step" x="846" y="108" width="136" height="86" rx="10"/><text class="tg" x="858" y="124">CODE</text><text class="ttl" x="858" y="145">Grade</text><text class="sub" x="858" y="164">and update the</text><text class="sub" x="858" y="180">twin</text>
+      <polygon class="decide" points="1050,104 1100,150 1050,196 1000,150"/>
+      <text class="tg" x="1050" y="134" text-anchor="middle" style="fill:var(--accent)">CODE</text>
+      <text class="ttl acc" x="1050" y="156" text-anchor="middle">Decide</text>
+
+      <line class="arrow" x1="148" y1="150" x2="176" y2="150" marker-end="url(#ah2)"/>
+      <line class="arrow" x1="310" y1="150" x2="338" y2="150" marker-end="url(#ah2)"/>
+      <line class="arrow" x1="472" y1="150" x2="500" y2="150" marker-end="url(#ah2)"/>
+      <line class="arrow" x1="660" y1="150" x2="688" y2="150" marker-end="url(#ah2)"/>
+      <line class="arrow" x1="818" y1="150" x2="846" y2="150" marker-end="url(#ah2)"/>
+      <line class="arrow" x1="982" y1="150" x2="1000" y2="150" marker-end="url(#ah2)"/>
+
+      <!-- suspension -->
+      <path class="bus" d="M500 214 V222 H818 V214" style="stroke:var(--indigo)"/>
+      <text class="sub" x="659" y="242" text-anchor="middle" style="fill:var(--indigo)">⏸ the run suspends here and waits for the student. It is saved in the database.</text>
+
+      <!-- outcomes -->
+      <path class="bus" d="M1050 196 V300 H145"/>
+      <path class="bus" d="M145 300 V326"/><path class="bus" d="M415 300 V326"/><path class="bus" d="M685 300 V326"/><path class="bus" d="M955 300 V326"/>
+
+      <rect class="pill" x="20" y="326" width="250" height="100" rx="12" style="stroke:var(--accent)"/>
+      <text class="ttl acc" x="36" y="352">WRONG: go back</text>
+      <text class="sub" x="36" y="372">re-teach the same topic in a</text><text class="sub" x="36" y="388">different style, aimed at the</text><text class="sub" x="36" y="404">exact wrong idea  ↩ to Explain</text>
+      <rect class="pill" x="290" y="326" width="250" height="100" rx="12" style="stroke:var(--green)"/>
+      <text class="ttl" x="306" y="352" style="fill:var(--green)">RIGHT: move on</text>
+      <text class="sub" x="306" y="372">the next part of the topic.</text><text class="sub" x="306" y="388">Parts they already know well</text><text class="sub" x="306" y="404">and recently are skipped</text>
+      <rect class="pill" x="560" y="326" width="250" height="100" rx="12" style="stroke:var(--indigo)"/>
+      <text class="ttl ind" x="576" y="352">ALL PARTS DONE: final</text>
+      <text class="sub" x="576" y="372">a written question, in their</text><text class="sub" x="576" y="388">own words. Fail it: re-teach the</text><text class="sub" x="576" y="404">weakest part (max 2×)  ↩</text>
+      <rect class="pill" x="830" y="326" width="250" height="100" rx="12" style="stroke:var(--muted)"/>
+      <text class="ttl" x="846" y="352">CAPS HIT or STOP: end</text>
+      <text class="sub" x="846" y="372">token, step and revision limits,</text><text class="sub" x="846" y="388">or the student stops. It always</text><text class="sub" x="846" y="404">ends with a stated reason</text>
+
+      <text class="sub" x="20" y="462">Tags show who does each step: MODEL writes, CODE decides or grades, HUMAN answers (dashed box). The terracotta arrow is the route going backwards.</text>
+    </svg>
+    <figcaption>One run of a guided session. The three ways it goes backwards: a wrong answer, a failed final check, and a question the tutor rejected before you saw it.</figcaption>
+  </figure>
+
+  <div class="box accent">
+    <h3>The agentic part, in one paragraph</h3>
+    <p>The heart is a single loop over the student's twin: <strong>read the twin, decide the next step, act, suspend to ask the student, update the twin, repeat.</strong> It is a real state machine (<code>DRAFTING</code>, <code>GATING</code>, <code>AWAITING_EXPERT</code>, <code>COMPLETE</code>, <code>FAILED</code>), it persists between steps and between sessions, it calls tools (note search, the code sandbox), it stops and waits for a human, and it goes backwards when an answer shows a wrong idea. Which topic, which style and when to stop are decided by code, so the behaviour is bounded, reviewable and testable.</p>
+  </div>
+
+  <h3>The organisers' checklist, and our evidence</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Test</th><th>What ours does</th><th>Where to look</th></tr></thead>
+    <tbody>
+      <tr><td>State persistence</td><td>One twin per student, saved after every answer, with mastery fading over time. Every run is an append-only history, so a restart resumes where it stopped.</td><td><code>demo/tutor/learners.py</code>, <code>slice/store.py</code></td></tr>
+      <tr><td>Human in the loop</td><td>The run suspends into <code>AWAITING_EXPERT</code> to ask the student, and again when their notes do not cover a topic. Waits up to 24 hours. A missing-notes question that times out counts as a skip, never as consent.</td><td><code>slice/callback.py</code>, <code>demo/tutor/flow.py</code></td></tr>
+      <tr><td>Autonomous tool use</td><td>Searches the student's own notes. Runs code in a Docker sandbox, including the tutor's <em>own</em> solution to a question it wrote, to prove the question is fair before the student sees it. Draws diagrams only through an allow-list.</td><td><code>library.py</code>, <code>sandbox.py</code>, <code>coach.py</code>, <code>visuals.py</code></td></tr>
+      <tr><td>Multi-step decomposition</td><td>Plan, prerequisites, probe, teach, check, the parts of the topic, then a final check. An exam question is broken down the same way.</td><td><code>curriculum.py</code>, <code>steps.py</code></td></tr>
+      <tr><td>Goes backwards</td><td>Wrong answer: back to teaching, new style, aimed at that idea. Failed final: the weakest part is re-taught (twice at most). A question whose own solution fails its own tests is rewritten once, with the reason fed back.</td><td><code>flow.py</code> (<code>handle_gating</code> returns to <code>handle_drafting</code>)</td></tr>
+      <tr><td>Bounded</td><td>Token budget per run, attempts per step, and caps on checks (16), steps (30), explanations in a row (2) and revisions (2).</td><td><code>steps.py</code>, <code>slice/budget.py</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Where the agent lives in the code</h3>
+  <div class="grid">
+    <div class="box"><h3><code>slice/runner.py</code></h3><p>The state machine, from the kit: moves a run between states and resumes it. It knows nothing about tutoring.</p></div>
+    <div class="box"><h3><code>demo/tutor/flow.py</code></h3><p>Ours. Two handlers: <code>handle_drafting</code> (choose and write the next step) and <code>handle_gating</code> (grade the answer, update the twin).</p></div>
+    <div class="box"><h3><code>demo/tutor/steps.py</code></h3><p>The policy as pure functions: <code>decide</code> picks probe, teach, final or done from the plan, the twin and this session's checks.</p></div>
+    <div class="box"><h3><code>demo/tutor/learner.py</code></h3><p>The twin's arithmetic: <code>apply_check</code>, <code>effective_mastery</code> (forgetting), <code>style_for</code> (the next teaching style).</p></div>
+  </div>
+
+  <div class="box indigo">
+    <h3>What is deliberately <em>not</em> agentic</h3>
+    <p>The model never chooses its own next action and never calls a tool by itself. That is a choice, following the kit's principle "orchestration in code, judgement in the model": a model that picks its own next step has unbounded cost and a control flow that is different every run, so it cannot be audited afterwards. Say it plainly: <strong>ours is bounded, stateful orchestration, where the route depends on what the student's answers show.</strong></p>
+  </div>
+</section>
+
+<!-- ============================================================ UNIQUE -->
+<section id="unique">
+  <p class="eyebrow">What is unique</p>
+  <h2>What sets it apart from a chat assistant</h2>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th>A general chat assistant</th><th>This tutor</th></tr></thead>
+    <tbody>
+      <tr><td>Remembers you</td><td class="no">Within one chat.</td><td class="yes">Per student, across sessions, in a database. It fades with time (half-life 14 days), so old successes come due for review.</td></tr>
+      <tr><td>Knows why you were wrong</td><td class="no">Says right or wrong.</td><td class="yes">Every wrong option stands for one named wrong idea. Choosing it names the belief.</td></tr>
+      <tr><td>Adapts</td><td class="no">Explains the same way again.</td><td class="yes">A different style each time (plain, analogy, worked example, diagram), aimed at that idea.</td></tr>
+      <tr><td>Prerequisites</td><td class="no">Assumes them.</td><td class="yes">Checks each one first and skips what the student already knows.</td></tr>
+      <tr><td>Source</td><td class="no">The whole internet.</td><td class="yes">Optionally the teacher's notes only, with citations checked in code. A topic they do not cover is flagged, and the student chooses.</td></tr>
+      <tr><td>How sure you were</td><td class="no">Ignored.</td><td class="yes">Scored. Certain and wrong costs the most. "I don't know" is honest, not a wrong belief.</td></tr>
+      <tr><td>Code</td><td class="no">Shows code.</td><td class="yes">Runs yours in a locked-down container (4 languages) and grades it on hidden tests, naming the wrong idea and never the answer.</td></tr>
+      <tr><td>Transparency</td><td class="no">A black box.</td><td class="yes">The Twin tab shows what it believes about you.</td></tr>
+      <tr><td>Control flow</td><td class="no">The model decides.</td><td class="yes">Code decides, with tests that prove it.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Seven things to point at</h3>
+  <div class="grid">
+    <div class="box"><h3>1. Diagnostic distractors</h3><p>A wrong option is not random noise. It is written to be the one wrong idea a student would hold. A wrong pick is a diagnosis.</p></div>
+    <div class="box"><h3>2. A twin that forgets</h3><p>Mastery slides back toward "unknown" over time, so the tutor brings a topic back when it is due, from what the student knows <em>now</em>, not their peak.</p></div>
+    <div class="box"><h3>3. Probe before explain</h3><p>It tests a prerequisite before teaching it, so a student is never re-taught what they already know.</p></div>
+    <div class="box"><h3>4. Honest gaps</h3><p>With the student's notes on, it cites them and says "not in your documents" instead of guessing.</p></div>
+    <div class="box"><h3>5. Confidence-calibrated scoring</h3><p>How sure a student was changes how far the answer moves the score, and a certain wrong belief counts double.</p></div>
+    <div class="box"><h3>6. Questions that check themselves</h3><p>A program question is only shown once the model's own solution passes its own hidden tests in the sandbox. Otherwise it is rewritten, then replaced by multiple choice.</p></div>
+    <div class="box"><h3>7. Nothing leaks</h3><p>The answer key and hidden tests never reach the browser. Each student's sessions and documents are theirs alone.</p></div>
+  </div>
+
+  <h3>The twin, in numbers</h3>
+  <div class="two">
+    <figure class="figure small" style="margin:0">
+      <svg viewBox="0 0 560 300" role="img" aria-labelledby="fg-t fg-d">
+        <title id="fg-t">Mastery fading over 30 days</title>
+        <desc id="fg-d">A curve starts at 90 percent and slides toward 30 percent with a half-life of 14 days. It crosses the 75 percent line after about six days, which is when the topic comes due for review.</desc>
+        <line class="grid-l" x1="60" y1="24" x2="540" y2="24"/>
+        <line class="grid-l" x1="60" y1="137" x2="540" y2="137"/>
+        <line class="axis" x1="60" y1="24" x2="60" y2="250"/><line class="axis" x1="60" y1="250" x2="540" y2="250"/>
+        <text class="sub" x="52" y="28" text-anchor="end">100%</text><text class="sub" x="52" y="141" text-anchor="end">65%</text><text class="sub" x="52" y="254" text-anchor="end">30%</text>
+        <line x1="60" y1="104.7" x2="540" y2="104.7" stroke="var(--green)" stroke-width="2" stroke-dasharray="8 5"/>
+        <text class="sub" x="536" y="96" text-anchor="end" style="fill:var(--green)">75%: "known"</text>
+        <path class="curve" d="M60.0 56.3 L76.0 65.6 L92.0 74.5 L108.0 83.0 L124.0 91.1 L140.0 98.8 L156.0 106.1 L172.0 113.0 L188.0 119.6 L204.0 125.9 L220.0 131.9 L236.0 137.6 L252.0 143.1 L268.0 148.2 L284.0 153.1 L300.0 157.8 L316.0 162.3 L332.0 166.5 L348.0 170.5 L364.0 174.4 L380.0 178.0 L396.0 181.5 L412.0 184.8 L428.0 188.0 L444.0 191.0 L460.0 193.8 L476.0 196.5 L492.0 199.1 L508.0 201.6 L524.0 203.9 L540.0 206.1"/>
+        <circle cx="153" cy="104.7" r="6" fill="var(--accent)"/>
+        <text class="txt" x="170" y="78" style="font-weight:600">Review due after about 6 days</text>
+        <line x1="153" y1="99" x2="166" y2="84" stroke="var(--muted)" stroke-width="1.2"/>
+        <text class="sub" x="60" y="272">0</text><text class="sub" x="220" y="272" text-anchor="middle">10</text><text class="sub" x="380" y="272" text-anchor="middle">20</text><text class="sub" x="540" y="272" text-anchor="end">30 days</text>
+        <text class="sub" x="300" y="292" text-anchor="middle">a topic mastered at 90%, then left alone</text>
+      </svg>
+      <figcaption>Forgetting: <code>effective_mastery</code> slides back toward 30% with a 14-day half-life. Read at request time; nothing stored is rewritten.</figcaption>
+    </figure>
+    <div>
+      <div class="box">
+        <h3 style="margin-top:0">How one answer moves the score</h3>
+        <div class="scroll" style="margin:0"><table>
+          <thead><tr><th>Student says</th><th>Right answer</th><th>Wrong answer</th></tr></thead>
+          <tbody>
+            <tr><td>Just guessing</td><td>+30% of the gap to 100%</td><td>keeps 70%</td></tr>
+            <tr><td>Fairly sure</td><td>+50%</td><td>keeps 50%</td></tr>
+            <tr><td>Certain</td><td>+60%</td><td>keeps 30%, and the wrong idea counts double</td></tr>
+            <tr><td>I don't know</td><td>n/a</td><td>keeps 85%, no wrong idea recorded</td></tr>
+          </tbody>
+        </table></div>
+        <p style="margin-top:12px; font-size:15px">A new topic starts at 30%, not 0. One confident right answer takes it to 72%, still under the 75% bar, so one lucky answer cannot master a topic.</p>
+      </div>
+      <div class="box" style="margin-top:14px">
+        <h3 style="margin-top:0">A diagnostic question</h3>
+        <p style="font-size:15px">"What does <code>f()</code> return the second time it is called?"</p>
+        <ul class="opts">
+          <li><span><code>[1]</code></span><span class="tag">holds: default-is-copied</span></li>
+          <li><span><code>[1, 1]</code></span><span class="tag g">correct</span></li>
+          <li><span>an error</span><span class="tag">holds: default-is-global</span></li>
+        </ul>
+        <p style="margin-top:10px; font-size:14px; color:var(--muted)">The tags stay on the server. The page only sees the text.</p>
+      </div>
+    </div>
+  </div>
+  <p class="path">These constants are our guesses, not calibrated on real students. See the limits.</p>
+</section>
+
+<!-- ============================================================ PROOF -->
+<section id="proof">
+  <p class="eyebrow">Proof</p>
+  <h2>What you can show, and where it comes from</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Claim</th><th>Number</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Automated tests</td><td>462 pass. 422 need no Docker and no key; the 40 Docker tests skip themselves when Docker is missing.</td><td><code>python -m pytest</code>, run on the pushed commit</td></tr>
+      <tr><td>Code sandbox</td><td>4 languages, 17 versions. Checked against real Docker with network attempts, writes outside the scratch area, a fork bomb, a memory bomb and huge output. Unit tests cover forged output and shell injection.</td><td><code>tests/test_tutor_runtimes.py</code>, <code>tests/test_tutor_languages.py</code></td></tr>
+      <tr><td>Model-written programs</td><td>Java, C++, JavaScript and Python questions written by a free-tier model each passed their own hidden tests in the real sandbox, and the untouched starter did not.</td><td>live checks made while building it</td></tr>
+      <tr><td>Speed of a lesson</td><td>Median 55 s down to 10-25 s, after finding two mistakes of ours in the prompts.</td><td>progress report (19 Sept)</td></tr>
+      <tr><td>Tokens per lesson</td><td>About 6,500 down to about 1,400-1,600.</td><td>progress report (19 Sept)</td></tr>
+      <tr><td>Valid JSON on the first try</td><td>0 of 2 before the prompt named the keys, 6 of 6 after.</td><td>progress report (19 Sept)</td></tr>
+      <tr><td>Real users</td><td>The team reports at least three outside testers. All four of their suggestions were built (UI improvements, a confidence rating, documents as the source of truth, adding documents), all on the same day the tutor's first commit was made. That makes each feedback loop at most 3 hours 15 minutes.</td><td>progress report and README. The time is worked out from commit times, not timed, and the git history does not name the testers</td></tr>
+      <tr><td>Docs that cannot go stale</td><td>A test fails if the architecture document points at code that has moved.</td><td><code>tests/test_architecture.py</code></td></tr>
+    </tbody>
+  </table></div>
+  <p class="path">Rows marked "progress report" are from <code>docs/PROGRESS-REPORT.md</code>, written before sign-in, guided mode and the multi-language sandbox. Re-measure before quoting them as current.</p>
+
+  <h3>What we were given, and what we built</h3>
+  <div class="two">
+    <div class="box"><h3 style="margin-top:0">Given (the Agentic Slice Kit)</h3><p>The spine in <code>slice/</code>: the state machine, the append-only store, the suspend and resume callback, the budget, and the model client. Plus the docs and a smoke agent.</p></div>
+    <div class="box green"><h3 style="margin-top:0">Built by the team</h3><p>The whole tutor in <code>demo/tutor/</code> (learner model, guided planning, probes, grading, code coach, sandbox), the JSON API and sign-in in <code>web/</code>, the React interface in <code>web/ui/</code>, and the tests for all of it.</p></div>
+  </div>
+
+  <h3>Mapped to the kit's nine principles</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Principle</th><th>Our evidence</th></tr></thead>
+    <tbody>
+      <tr><td>1. Durable state outside the context window</td><td>The <code>versions</code> history and the <code>learners</code> table. Runs resume after a restart.</td></tr>
+      <tr><td>2. Typed contracts</td><td>Schemas for every lesson, quiz, plan, grade and code task. Bad reply: repair once, then the fallback model, then a visible failure.</td></tr>
+      <tr><td>3. Bounded loops</td><td>Token budget (250,000 per run by default), attempts per step, and step, check, explanation and revision caps.</td></tr>
+      <tr><td>4. Tool use with provenance</td><td>In notes mode every citation is checked against what retrieval returned. A lesson that cites nothing it was given fails with "ungrounded".</td></tr>
+      <tr><td>5. Human-in-the-loop as a state</td><td><code>AWAITING_EXPERT</code>: the run suspends and resumes, and the process can exit in between.</td></tr>
+      <tr><td>6. Observability</td><td>The append-only history is a replay. Optional Langfuse tracing on every model call.</td></tr>
+      <tr><td>7. Orchestration in code, judgement in the model</td><td><code>steps.decide</code> and <code>learner.apply_check</code> are plain functions with their own tests.</td></tr>
+      <tr><td>8. Assertions a human is not making by eye</td><td>462 tests, including adversarial ones: hostile code in the sandbox, upload path tricks, sign-in, and one student reaching another's data.</td></tr>
+      <tr><td>9. A failure behaviour per dependency</td><td>Model down: fallback, then an honest notice. Docker or image missing: program questions become multiple choice and the page says why. Notes do not cover a topic: ask the student. Bad diagram: dropped, never shown as an error.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ SCRIPT -->
+<section id="script">
+  <p class="eyebrow">Say it</p>
+  <h2>A five-minute script</h2>
+  <p>About 650 words at a relaxed pace. The cues in grey say what should be on screen. Put your own words in wherever they come more naturally.</p>
+  <ol class="script">
+    <li><time>0:00</time><blockquote><span class="cue">On screen: the hero</span>
+      <p>Picture a student who asks a chatbot why a Python function's list default keeps growing. The answer is correct. They nod. Three weeks later, in the lab test, they write the same bug. They believed the default was copied fresh on every call, and no explanation ever touched that belief. Nothing remembered it.</p></blockquote></li>
+    <li><time>0:35</time><blockquote><span class="cue">On screen: "If you only get 30 seconds"</span>
+      <p>We built a tutor around a <em>cognitive twin</em>: a model of each student that lives in a database. Every wrong option in our quizzes is written to stand for one specific wrong idea. So a wrong answer does not just say "wrong". It names the misunderstanding. The tutor writes that down, teaches the same topic a different way aimed at that idea, and remembers it next week.</p></blockquote></li>
+    <li><time>1:15</time><blockquote><span class="cue">On screen: the architecture diagram</span>
+      <p>Here is how it fits together. The student's browser talks to a small API. The API hands the answer to the agent loop, which is a state machine. On the right are the tools it calls: a language model, a search over the student's own notes, and a Docker sandbox that runs code in four languages with no network. Everything is saved in one database file, so the state lives there and not in a chat window.</p>
+      <p>The line to remember is in the middle: <strong>code decides, the model writes.</strong> Which topic comes next, whether a multiple-choice answer is right, how the twin changes, and when to stop are ordinary tested functions. The model writes lessons, questions and plans.</p></blockquote></li>
+    <li><time>2:15</time><blockquote><span class="cue">On screen: the loop diagram</span>
+      <p>Why is that an agent? The organisers put it well: an agent is a workflow that can go backwards. Ours goes backwards in three places. A wrong answer sends the run back to teach the same topic in a different style, aimed at the exact wrong idea. A failed final check re-teaches the weakest part, at most twice. And if the tutor writes a question whose own solution fails its own tests, it rewrites it before the student ever sees it.</p>
+      <p>It also stops and waits for a human, as a saved state that survives a restart. It uses tools. It breaks a topic into prerequisites and parts. And every loop is capped, so it cannot run away.</p></blockquote></li>
+    <li><time>3:20</time><blockquote><span class="cue">On screen: the comparison table</span>
+      <p>What is different from a chat assistant? It remembers per student and forgets with time, so old topics come due for review. It knows <em>why</em> you were wrong. It checks prerequisites before explaining, so it never re-teaches what you know. It can teach only from your teacher's notes and cite them, and when the notes do not cover something it says so instead of guessing. It scores how sure you were. And it shows you what it believes about you.</p></blockquote></li>
+    <li><time>4:10</time><blockquote><span class="cue">On screen: the proof table</span>
+      <p>The proof: 462 automated tests, including adversarial ones for the sandbox and for sign-in. Testers outside the team asked for a confidence rating, their own documents, and a better interface, and all of it was built the same day.</p>
+      <p>And we are honest about the limits. The mastery constants are our guesses, not calibrated. We have not measured whether students learn more. General-knowledge lessons cannot be checked against a source, so they are labelled.</p></blockquote></li>
+    <li><time>4:45</time><blockquote><span class="cue">On screen: back to the hero</span>
+      <p>A tutor that remembers what you got wrong, teaches it a different way, and knows when to stop and ask. Thank you. Happy to take questions.</p></blockquote></li>
+  </ol>
+</section>
+
+<!-- ============================================================ Q&A -->
+<section id="qa">
+  <p class="eyebrow">Expect these</p>
+  <h2>Judge questions, with honest answers</h2>
+
+  <details class="q"><summary>Isn't this just a prompt wrapped in a chat interface?</summary><div>
+    <p>No. The model writes lessons and questions, but it does not run the session. A state machine does, over a database. The twin persists across sessions, the run suspends and resumes, tools are called, and the route goes backwards depending on the answers. The prompts are the smallest part of it.</p></div></details>
+
+  <details class="q"><summary>Who decides what happens next: the model?</summary><div>
+    <p>Code does, on purpose. <code>steps.decide</code> is a pure function over the plan, the twin and this session's checks. It is tested in microseconds. The model never picks its own next action, because that would make cost unbounded and behaviour different every run. That is the kit's own principle: orchestration in code, judgement in the model.</p></div></details>
+
+  <details class="q"><summary>Show me where it goes backwards.</summary><div>
+    <p>Three places, all in <code>demo/tutor/flow.py</code>. A wrong answer returns from grading to teaching with a new style aimed at that idea. A failed final check re-teaches the weakest part, at most twice. A program question whose own solution fails its own tests is rewritten once with the reason fed back, then replaced by multiple choice.</p></div></details>
+
+  <details class="q"><summary>What if the model writes a wrong question or bad tests?</summary><div>
+    <p>For program questions we run the model's own solution against its own hidden tests in the sandbox before the student sees the question. Model replies are also parsed by schemas, with one repair pass and a fallback model. For multiple choice we cannot prove a distractor names exactly one belief. We saw it hold on a handful of live lessons and have not tested it widely.</p></div></details>
+
+  <details class="q"><summary>What stops it looping forever or burning tokens?</summary><div>
+    <p>Two kinds of limit that do not share a counter. A spend limit (250,000 tokens per run by default, and attempts per step) and revision limits counted from the record history: 16 checks, 30 steps, 2 explanations in a row, 2 revisions after a failed final. The revision limits live in code, not in a prompt.</p></div></details>
+
+  <details class="q"><summary>What if the student walks away, or the server restarts?</summary><div>
+    <p>The run is a suspended state in the database, so nothing is lost. The page resumes an interrupted session on reload. If nobody answers within 24 hours the session ends as "student left". A missing-notes question that times out counts as a skip, never as consent.</p></div></details>
+
+  <details class="q"><summary>Can a student see the answers, or another student's data?</summary><div>
+    <p>The answer key, rubric and hidden tests never leave the server, and there are tests that read the network payloads for them. Every session and document is locked to its owner: another student's run answers "no such session". Names that existed before accounts are locked so nobody can take over their progress by signing up first.</p></div></details>
+
+  <details class="q"><summary>Is running a student's code safe?</summary><div>
+    <p>Each run is a throwaway Docker container: no network, read-only root, all capabilities dropped, non-root, memory, CPU, process and time limits. The source and test inputs go in as base64, never on a command line. Each language and version is proven on first use and fails closed. One honest gap: a process running as the same user can still read <code>/proc/1/environ</code>, so a determined student could read the hidden test inputs.</p></div></details>
+
+  <details class="q"><summary>How do you know students learn more?</summary><div>
+    <p>We do not. There is no before-and-after test and no comparison with a plain chat assistant. What we can show is that testers were heard and the tool changed quickly. A quick way to get real evidence: ask a tester three questions cold, let them use the tutor for about 15 minutes, then ask three different questions on the same topic.</p></div></details>
+
+  <details class="q"><summary>Where do the numbers come from: 75%, 14 days, 0.3 / 0.5 / 0.6?</summary><div>
+    <p>They are our guesses, not calibrated on real students, and we say so in the spec. We also cannot tell whether students report their confidence honestly. A student who always taps "Certain" is not fooled by it, because a wrong certain answer costs the most, but nothing here measures it yet.</p></div></details>
+
+  <details class="q"><summary>Does the model hallucinate?</summary><div>
+    <p>General-knowledge lessons cannot be checked against anything, so they carry a visible label and an instruction to leave out what the model is unsure of. In notes mode, every citation is checked in code against what retrieval returned, and a lesson that cites nothing it was given fails instead of being shown.</p></div></details>
+
+  <details class="q"><summary>Does it work for subjects other than programming?</summary><div>
+    <p>Topics are free text, the prompts are subject-neutral, and the code sandbox is optional beside every lesson. A live check on "photosynthesis" produced a clean lesson and plan with no code in either. Most of our testing has been on programming topics, so say that if asked.</p></div></details>
+
+  <details class="q"><summary>What did you build, and what did the kit give you?</summary><div>
+    <p>The kit gave us the spine in <code>slice/</code>: the state machine, the store, the callback, the budget and the model client. We built the whole tutor on top of it: the learner model, guided planning, probes, grading, the code coach and sandbox, the API, sign-in, the interface, and the tests.</p></div></details>
+
+  <details class="q"><summary>What does it cost to run?</summary><div>
+    <p>A free OpenRouter key is enough (the team's report; not independently checked). A lesson uses about 1,400-1,600 tokens. We measured latency but not free-tier rate limits, so say that if asked. Docker is only needed to run code.</p></div></details>
+
+  <details class="q"><summary>What is next?</summary><div>
+    <p>A second round with the same testers and a before-and-after measure, calibrating the mastery constants on real sessions, a teacher dashboard, separate mastery per language, and testing with a real teacher's PDFs and slides.</p></div></details>
+</section>
+
+<!-- ============================================================ LIMITS -->
+<section id="limits">
+  <p class="eyebrow">Be honest about</p>
+  <h2>Known limits</h2>
+  <div class="grid">
+    <div class="box"><h3>Not calibrated</h3><p>The mastery constants (75%, 14 days, the confidence weights) are guesses. Whether students report confidence honestly is not measured.</p></div>
+    <div class="box"><h3>No learning-gain measurement</h3><p>Outside-user evidence is real but thin: three named testers and no second round.</p></div>
+    <div class="box"><h3>General knowledge is unchecked</h3><p>Lessons without notes cannot be verified. They are labelled, not proven.</p></div>
+    <div class="box"><h3>Sandbox limits</h3><p>Four languages, single-file programs, no interactive input, runtimes pulled once. A same-user process can read <code>/proc/1/environ</code>.</p></div>
+    <div class="box"><h3>Mastery is shared across languages</h3><p>Knowing recursion in Python counts when you switch to Java. Per-language mastery is not built.</p></div>
+    <div class="box"><h3>Not verified</h3><p>Free-tier rate limits, real teacher PDFs, Codespaces, and diagrams offline (Mermaid loads from a CDN).</p></div>
+    <div class="box"><h3>Not built</h3><p>A teacher dashboard, email (a forgotten password is reset by whoever runs the server), and a second round of user testing.</p></div>
+    <div class="box"><h3>Old docs</h3><p><code>docs/PROGRESS-REPORT.md</code> predates sign-in, guided mode and the sandbox. Its test count and "not started" list are out of date.</p></div>
+  </div>
+</section>
+
+<footer>
+  <p>Prepared 20 September 2026 from the code as of commit <code>0bfa631</code> on <code>main</code>. Diagrams are hand-drawn SVG, so this page works offline and prints. Every file path above exists in the repository.</p>
+</footer>
+</main>
+<script>
+  // Open every question before printing, so the printed page has the answers.
+  window.addEventListener("beforeprint", function () { document.querySelectorAll("details").forEach(function (d) { d.open = true; }); });
+</script>
+</body>
+</html>
