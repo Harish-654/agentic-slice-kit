@@ -155,7 +155,7 @@
   <h1>Cognitive-twin tutor</h1>
   <p class="lead">A tutor for any topic that remembers what each student gets wrong, teaches the next lesson a different way, and knows when to stop and ask. <strong>Code decides what happens next. The model only writes.</strong></p>
   <ul class="chips" aria-label="Key facts">
-    <li>462 automated tests</li>
+    <li>469 automated tests</li>
     <li>4 languages, 17 versions, in a locked-down code sandbox</li>
     <li>The answer key never leaves the server</li>
     <li>Runs fully offline on a scripted model</li>
@@ -505,7 +505,7 @@
   <div class="scroll"><table>
     <thead><tr><th>Claim</th><th>Number</th><th>Source</th></tr></thead>
     <tbody>
-      <tr><td>Automated tests</td><td>462 pass. 422 need no Docker and no key; the 40 Docker tests skip themselves when Docker is missing.</td><td><code>python -m pytest</code>, run on the pushed commit</td></tr>
+      <tr><td>Automated tests</td><td>469 pass. 429 need no Docker and no key; the 40 Docker tests skip themselves when Docker is missing.</td><td><code>python -m pytest</code>, run on the pushed commit</td></tr>
       <tr><td>Code sandbox</td><td>4 languages, 17 versions. Checked against real Docker with network attempts, writes outside the scratch area, a fork bomb, a memory bomb and huge output. Unit tests cover forged output and shell injection.</td><td><code>tests/test_tutor_runtimes.py</code>, <code>tests/test_tutor_languages.py</code></td></tr>
       <tr><td>Model-written programs</td><td>Java, C++, JavaScript and Python questions written by a free-tier model each passed their own hidden tests in the real sandbox, and the untouched starter did not.</td><td>live checks made while building it</td></tr>
       <tr><td>Speed of a lesson</td><td>Median 55 s down to 10-25 s, after finding two mistakes of ours in the prompts.</td><td>progress report (19 Sept)</td></tr>
@@ -534,7 +534,7 @@
       <tr><td>5. Human-in-the-loop as a state</td><td><code>AWAITING_EXPERT</code>: the run suspends and resumes, and the process can exit in between.</td></tr>
       <tr><td>6. Observability</td><td>The append-only history is a replay. Optional Langfuse tracing on every model call.</td></tr>
       <tr><td>7. Orchestration in code, judgement in the model</td><td><code>steps.decide</code> and <code>learner.apply_check</code> are plain functions with their own tests.</td></tr>
-      <tr><td>8. Assertions a human is not making by eye</td><td>462 tests, including adversarial ones: hostile code in the sandbox, upload path tricks, sign-in, and one student reaching another's data.</td></tr>
+      <tr><td>8. Assertions a human is not making by eye</td><td>469 tests, including adversarial ones: hostile code in the sandbox, upload path tricks, sign-in, and one student reaching another's data.</td></tr>
       <tr><td>9. A failure behaviour per dependency</td><td>Model down: fallback, then an honest notice. Docker or image missing: program questions become multiple choice and the page says why. Notes do not cover a topic: ask the student. Bad diagram: dropped, never shown as an error.</td></tr>
     </tbody>
   </table></div>
@@ -559,7 +559,7 @@
     <li><time>3:20</time><blockquote><span class="cue">On screen: the comparison table</span>
       <p>What is different from a chat assistant? It remembers per student and forgets with time, so old topics come due for review. It knows <em>why</em> you were wrong. It checks prerequisites before explaining, so it never re-teaches what you know. It can teach only from your teacher's notes and cite them, and when the notes do not cover something it says so instead of guessing. It scores how sure you were. And it shows you what it believes about you.</p></blockquote></li>
     <li><time>4:10</time><blockquote><span class="cue">On screen: the proof table</span>
-      <p>The proof: 462 automated tests, including adversarial ones for the sandbox and for sign-in. Testers outside the team asked for a confidence rating, their own documents, and a better interface, and all of it was built the same day.</p>
+      <p>The proof: 469 automated tests, including adversarial ones for the sandbox and for sign-in. Testers outside the team asked for a confidence rating, their own documents, and a better interface, and all of it was built the same day.</p>
       <p>And we are honest about the limits. The mastery constants are our guesses, not calibrated. We have not measured whether students learn more. General-knowledge lessons cannot be checked against a source, so they are labelled.</p></blockquote></li>
     <li><time>4:45</time><blockquote><span class="cue">On screen: back to the hero</span>
       <p>A tutor that remembers what you got wrong, teaches it a different way, and knows when to stop and ask. Thank you. Happy to take questions.</p></blockquote></li>
