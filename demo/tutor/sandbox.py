@@ -235,6 +235,9 @@ def _check(lang: Language, version: str) -> tuple[bool, str]:
             return False, f"A {lang.label(version)} program would not compile and run here."
         return True, ""
     except FileNotFoundError:
+        if os.environ.get("CODESPACES") == "true":      # the message a student sees, so say how to fix it
+            return False, ("Docker is not available in this Codespace. Rebuild the container (Command Palette: "
+                           "Codespaces: Rebuild Container) so the Docker setup in .devcontainer applies.")
         return False, "Docker is not installed."
     except subprocess.TimeoutExpired:
         return False, "The sandbox check timed out. Is Docker running?"

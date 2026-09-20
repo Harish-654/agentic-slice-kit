@@ -15,6 +15,12 @@
 
   "containerEnv": { "FASTEMBED_CACHE_PATH": "/opt/fastembed" },
 
+  // The code sandbox runs every student program in a throwaway Docker container, so the Codespace needs Docker
+  // inside it (a Codespace cannot reach a host Docker socket). The images are kept on a volume that survives stops.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": { "moby": false }
+  },
+
   "customizations": {
     "vscode": {
       "extensions": [
@@ -32,5 +38,8 @@
   },
 
   "postCreateCommand": "cp -n .env.example .env || true",
+  // Pull the runtime images in the background on every start (a few minutes the first time, about 1.5 GB). Images
+  // already there are skipped, so a pull that failed, say on a Docker Hub rate limit, is retried next start.
+  "postStartCommand": "nohup python scripts/pull_runtimes.py --wait > /tmp/pull_runtimes.log 2>&1 &",
   "postAttachCommand": "python scripts/doctor.py || true"
 }

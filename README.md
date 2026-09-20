@@ -86,10 +86,22 @@ python -m uvicorn web.student:app --host 0.0.0.0 --port 8000
 
 The Codespaces image also has the embedding model baked in, so no download there,
 and it creates `.env` from `.env.example` for you (you still add the key).
-**We could not test Codespaces (Python 3.12) at all.** Treat this paragraph as
-untested.
 
-**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally; this was at an earlier commit, before sign-in and the code sandbox, and the suite has since grown to 462 tests). Fresh `git clone` of `main`, a brand-new venv,
+**Running code in Codespaces.** The code sandbox needs Docker, so the Codespace runs
+Docker inside itself (the `docker-in-docker` feature in `.devcontainer/devcontainer.json`)
+and pulls the runtime images in the background each time it starts. The first time takes
+a few minutes and about 1.5 GB; until an image is there, **Run** says that runtime is not
+installed, and Python 3.12 arrives first. Watch it with `tail -f /tmp/pull_runtimes.log`,
+and see what is present with `python scripts/pull_runtimes.py --list`. **A Codespace
+created before this was added does not pick it up by itself: run "Codespaces: Rebuild
+Container" from the Command Palette.** If the sandbox still says "Docker is not
+available in this Codespace", the rebuild has not happened yet.
+
+**We could not test Codespaces (Python 3.12) at all, and that includes the Docker
+setup above.** Treat this paragraph as untested until someone has rebuilt a Codespace
+and run `python -m pytest -m integration` in it.
+
+**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally; this was at an earlier commit, before sign-in and the code sandbox, and the suite has since grown to 469 tests). Fresh `git clone` of `main`, a brand-new venv,
 Python 3.14.7, Linux, no `.env`, no `run.db`, no `uploads/`. Every command above
 ran as written. `pip install` finished cleanly.
 `python -m pytest -k "not integration"` gives **148 passed, 3 deselected** in
@@ -391,7 +403,7 @@ What a judge would read:
   streak and the heatmap, worked out from records that already exist).
 - [`web/ui/`](web/ui/): the chat page's source (React, Vite, Tailwind, shadcn/ui,
   assistant-ui). The built files are committed in `web/ui/dist/`.
-- [`tests/`](tests/): 462 tests; `test_tutor*.py` cover the tutor. 40 of them
+- [`tests/`](tests/): 469 tests; `test_tutor*.py` cover the tutor. 40 of them
   (37 in `test_tutor_runtimes.py`, one each in `test_tutor_coach.py`,
   `test_tutor_probe_code.py` and `test_tutor_program.py`) need Docker
   and are marked `integration`; `python -m pytest -m "not integration"` skips them.
