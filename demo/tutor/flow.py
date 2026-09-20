@@ -64,16 +64,26 @@ def _format(want: str, language: str | None) -> str:
     return "format_code_stdio" if want == "code" and (language or "python") != "python" else FORMATS[want]
 
 
+def _request_line(concept: str, request: str | None) -> list[str]:
+    """The student's original words, when this topic is only one part of them. Nothing for the topic itself."""
+    if request and request.strip() and request.strip() != concept.strip():
+        return [f"THE STUDENT ASKED TO LEARN: {request.strip()}\nThis topic is one part of that."]
+    return []
+
+
 def build_teach_messages(concept, style, source, want, profile, misconception,
                          recent: bool = True, notes: str = "", focus: str | None = None,
                          language: str | None = None, version: str | None = None,
-                         problem: str | None = None) -> list[dict]:
+                         problem: str | None = None, request: str | None = None) -> list[dict]:
     """`source` is "general" or "docs"; `want` is "mcq", "text" (an open question) or "code".
+    `request` is what the student typed, for a lesson on one PART of it: a part's id ("virtual-functions") has lost
+    the language and subject they named, so it travels here.
     `focus` is what a guided student asked for instead of the quiz (a key of FOCUS). `language` and `version` are the
     sandbox's and matter only for a program question (`want == "code"`); every other lesson follows its topic.
     `problem` is why the program question written last time was rejected (its own solution failed its own tests)."""
     system = _prompt("teach", f"source_{source}", _format(want, language))
     user = [f"TOPIC: {concept}"]
+    user += _request_line(concept, request)
     if want == "code":
         lang, v = languages.resolve(language, version)
         user.append(lang.prompt_line(v))
@@ -116,8 +126,9 @@ def build_plan_messages(seed: str, is_exam: bool, known: list[str]) -> list[dict
             {"role": "user", "content": "\n\n".join(user)}]
 
 
-def build_probe_messages(concept: str, profile: str, problem: str | None = None) -> list[dict]:
-    user = f"TOPIC: {concept}\n\nSTUDENT PROFILE:\n{profile}"
+def build_probe_messages(concept: str, profile: str, problem: str | None = None,
+                         request: str | None = None) -> list[dict]:
+    user = "\n".join([f"TOPIC: {concept}", *_request_line(concept, request)]) + f"\n\nSTUDENT PROFILE:\n{profile}"
     if problem:
         user += ("\n\nYOUR PREVIOUS QUESTION WAS REJECTED: when its `code` was run it failed with:\n"
                  f"{problem}\nWrite a different question whose `code` runs cleanly.")
@@ -196,7 +207,8 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
             return model, inp
         exam, typed = inp.get("exam_question"), inp["concepts"][0]
         known = list(model.mastery)
-        plan = None if exam else model.plans.get(curriculum.key(typed))
+        plan_key = curriculum.key(typed, keep_language=True)           # "in Java" and "in Python" get their own plan
+        plan = None if exam else model.plans.get(plan_key)
         target = typed
         if plan is None:
             degraded = False
@@ -211,7 +223,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                           else learner.slug(" ".join(exam.split()[:4]))) or "exam-question"
             plan = curriculum.clean_plan(draft, target, known)
             if not degraded and not exam:               # a topic's plan is the same next time
-                model = model.model_copy(update={"plans": {**model.plans, curriculum.key(typed): plan}})
+                model = model.model_copy(update={"plans": {**model.plans, plan_key: plan}})
                 ctx.append("learner_model", model.model_dump(), produced_by="system")
                 learners.save(ctx.store, model)
             plan = plan | {"degraded": degraded}
@@ -220,7 +232,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
         ctx.append("input", inp, produced_by="agent:plan")
         return model, inp
 
-    def _probe(ctx, model, concept) -> RunState | None:
+    def _probe(ctx, model, concept, request=None) -> RunState | None:
         """Ask about a prerequisite before explaining it. The question is stored as a lesson with
         no teaching in it, so the page and the grader treat it like any other check.
 
@@ -231,7 +243,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
         problem = None
         for _ in range(PROBE_TRIES):
             got = call(settings=ctx.settings, budget=ctx.budget,
-                       messages=build_probe_messages(concept, learner.profile(model, concept), problem),
+                       messages=build_probe_messages(concept, learner.profile(model, concept), problem, request),
                        schema=Probe, step="probe", reasoning=False)
             # The probe names the language of its own code. One we cannot run (SQL, HTML...) is shown unchecked.
             lang = languages.LANGUAGES.get((got.code_language or "python").strip().lower())
@@ -322,11 +334,13 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
     def handle_drafting(ctx) -> RunState:
         model = _model(ctx)
         inp = ctx.latest("input")
-        action, focus, held = "teach", None, False
+        action, focus, held, request = "teach", None, False, None
 
         if inp.get("mode") == "guided":
             model, inp = _ensure_plan(ctx, model, inp)
             held = True                       # guided explanations wait for the student's choice
+            # The parts of a topic are language-free ids; the student's own words are how each part knows what to be about.
+            request = inp.get("exam_question") or inp["plan"]["target"]
             skipped = ({c for c in inp["concepts"] if _gap(ctx, c) == "skip"}
                        | {v.payload["concept"] for v in ctx.history("topic_skipped")})
             resumed = _resumed_by_choice(ctx)
@@ -356,7 +370,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                 if action == "final":
                     return _final(ctx, model, inp)
                 if action == "probe":
-                    asked = _probe(ctx, model, concept)
+                    asked = _probe(ctx, model, concept, request)
                     if asked is not None:
                         return asked
                     # no trustworthy probe could be made: teach the prerequisite instead
@@ -385,7 +399,7 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                 settings=ctx.settings, budget=ctx.budget,
                 messages=build_teach_messages(concept, style, source, kind,
                                               learner.profile(model, concept), misconception,
-                                              recent, _notes(chunks), focus, lang.id, ver, problem),
+                                              recent, _notes(chunks), focus, lang.id, ver, problem, request),
                 schema=Lesson, step="teach", reasoning=False,
             )
 

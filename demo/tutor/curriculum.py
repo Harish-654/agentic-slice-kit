@@ -10,14 +10,16 @@ from .schema import PlanDraft
 
 MAX_PREREQS, MAX_SUBTOPICS = 3, 4
 SIMILAR = 0.85                  # difflib ratio on canonical keys that counts as the same concept
-_STOP = {"a", "an", "the", "of", "in", "and", "to", "for", "with", "on", "basics", "basic",
-         "introduction", "intro", "python", "javascript", "java", "node", "nodejs", "cpp"}   # a concept is the idea, not the language
+_STOP = {"a", "an", "the", "of", "in", "and", "to", "for", "with", "on", "basics", "basic", "introduction", "intro"}
+_LANGUAGE_WORDS = {"python", "javascript", "java", "node", "nodejs", "cpp"}
 
 
-def key(name: str) -> str:
+def key(name: str, keep_language: bool = False) -> str:
     """Lowercase, drop filler words, strip plurals, sort the words: "Classes and objects"
-    and "object-classes" give the same key."""
-    words = [w for w in (learner.slug(name) or "").split("-") if w and w not in _STOP]
+    and "object-classes" give the same key. A concept is the idea, not the language, so a language word is dropped too,
+    unless `keep_language`: a cached PLAN is for one language and must not be reused for another."""
+    dropped = _STOP if keep_language else _STOP | _LANGUAGE_WORDS
+    words = [w for w in (learner.slug(name) or "").split("-") if w and w not in dropped]
     words = [w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w for w in words]
     return " ".join(sorted(words))
 

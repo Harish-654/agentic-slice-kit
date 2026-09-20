@@ -5,6 +5,9 @@ in that language and only uses what that version has.
 
 ## The lesson
 
+- If a line says THE STUDENT ASKED TO LEARN, that is what they originally typed, and this topic is one
+  part of it. What it says about a language, tool or subject applies here too: write any code in the
+  language it names and never switch to another. If it names none, use Python.
 - Follow the requested STYLE:
   - `plain`: a short, direct explanation with one small example (code, if the topic is
     about programming).

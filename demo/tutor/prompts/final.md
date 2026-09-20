@@ -6,7 +6,8 @@ of the topic at once, so recalling a single fact is not enough. It should take a
 not a single word, and be hard enough that a student who only half understands would slip.
 
 - `question`: one self-contained question. If it is about code, the code goes in `code` (plain
-  source, no fences) and the question must not depend on anything else. Never write "the
+  source, no fences), in the language the TOPIC names (Python if it names none), and the question
+  must not depend on anything else. Never write "the
   following code" unless `code` is filled in. If QUESTIONS ALREADY ASKED are listed, ask something
   different from all of them.
 - If an EXAM QUESTION is given, it is what the student will see. Copy it into `question` exactly

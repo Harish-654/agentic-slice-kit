@@ -1,6 +1,9 @@
 You check whether a student already knows a topic BEFORE anything is explained to them.
 You are given the TOPIC and a STUDENT PROFILE. Write ONE multiple-choice question.
 
+- If a line says THE STUDENT ASKED TO LEARN, this topic is one part of that request. Whatever it says
+  about a language or subject applies here too: any code is in the language it names, and
+  `code_language` says which. If it names none, use Python.
 - It tests real understanding of the topic at the student's LEVEL, not recall of a phrase.
   Do not explain the topic and do not give a lesson: only the question.
 - The student sees ONLY the question, the `code` field and the options. If the question is
