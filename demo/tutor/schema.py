@@ -72,8 +72,9 @@ class CodeTest(BaseModel):
     """One hidden check on a submitted program. `belief` names the wrong idea a
     failure of THIS test exposes, so failing it is a diagnosis, like a tagged
     distractor."""
-    call: str                   # a Python expression using the student's code, e.g. add(2, 3)
-    expected: str               # repr() of the right result
+    call: str = ""              # function style (Python): an expression using the student's code, e.g. add(2, 3)
+    stdin: str = ""             # input/output style: the text the program is given
+    expected: str = ""          # function style: repr() of the right result; input/output: the exact stdout
     belief: str
 
 
@@ -84,6 +85,18 @@ class CodeTask(BaseModel):
     starter: str = ""
     tests: list[CodeTest] = Field(min_length=1, max_length=6)
     model_solution: str
+    # "function": call the student's function with hidden inputs (Python only). "stdio": the program reads its input
+    # on stdin and prints its answer, the same in every language.
+    style: Literal["function", "stdio"] = "function"
+
+    @model_validator(mode="after")
+    def _tests_fit_the_style(self):
+        for t in self.tests:
+            if self.style == "function" and not t.call.strip():
+                raise ValueError("a function-style test needs `call`")
+            if not t.expected.strip():
+                raise ValueError("every test needs the `expected` result")
+        return self
 
 
 class Lesson(BaseModel):
@@ -126,6 +139,9 @@ class PlanDraft(BaseModel):
 class Probe(BaseModel):
     """A bare check on a prerequisite, asked BEFORE anything is explained."""
     quiz: Quiz
+    # Which language `quiz.code` is in, so the code can be run in the right sandbox before a student sees it. Only the
+    # four we can run matter; anything else (SQL, HTML) is simply not run. Missing means Python.
+    code_language: str | None = None
 
 
 AnswerMode = Literal["mcq", "text", "code"]
@@ -146,3 +162,7 @@ class LearnerModel(BaseModel):
     use_docs: bool = False                  # teach from the student's own documents
     recent_questions: dict[str, list[str]] = {}   # concept -> last few stems, so none repeat
     plans: dict[str, dict] = {}             # curriculum.key(topic) -> {"prereqs": [...], "subtopics": [...]}
+    # The code sandbox's language and version: what the editor runs and program questions are written in. Chosen in the
+    # sandbox only, remembered for next time. Lessons never read it; they follow the topic.
+    language: str = "python"
+    version: str | None = None

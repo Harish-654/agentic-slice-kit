@@ -1,7 +1,9 @@
 import type { FC } from 'react'
 import { PlusIcon } from 'lucide-react'
+import { StreakChip } from '@/components/activity/StreakChip'
 import { Button } from '@/components/ui/button'
 import { Mark } from './Mark'
+import { SignOutButton } from './SignOutButton'
 import { ThemeToggle } from './ThemeToggle'
 import { ViewTabs, type View } from './ViewTabs'
 
@@ -19,11 +21,14 @@ export const TopBar: FC<{ student: string; view: View; onView: (v: View) => void
         <ViewTabs view={view} onChange={onView} />
       </div>
       <div className="flex items-center gap-1">
+        <StreakChip className="mr-1" />
         <ThemeToggle />
         <Button variant="ghost" size="sm" onClick={onRestart}>
           <PlusIcon />
-          New session
+          <span className="hidden sm:inline">New session</span>
+          <span className="sr-only sm:hidden">New session</span>
         </Button>
+        <SignOutButton />
       </div>
     </div>
     <div className="border-t px-2 md:hidden">

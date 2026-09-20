@@ -19,12 +19,16 @@ export const CodeTaskCard: ToolCallMessagePartComponent = ({ args }) => {
       <p className="font-heading text-lg leading-snug font-medium">{task.question}</p>
       {open ? (
         <div className="mt-3">
-          <CodeEditor code={code} setCode={setCode} assisted={assisted} setAssisted={setAssisted}>
+          <CodeEditor code={code} setCode={setCode} assisted={assisted} setAssisted={setAssisted} language={task.language}>
             <Button type="button" size="sm" disabled={!confidence || !code.trim()} onClick={() => submitCode(code, assisted)}>
               Submit program
             </Button>
           </CodeEditor>
-          <p className="text-muted-foreground mt-2 text-xs">Run as often as you like. Say how sure you are to unlock Submit.</p>
+          <p className="text-muted-foreground mt-2 text-xs">
+            {task.style === 'stdio'
+              ? 'Your program reads its input and prints its answer. Try it in Program input, run as often as you like, then say how sure you are to unlock Submit. It is checked on inputs you cannot see.'
+              : 'Run as often as you like. Say how sure you are to unlock Submit.'}
+          </p>
           <AnswerActions withSubmit={false} />
         </div>
       ) : (

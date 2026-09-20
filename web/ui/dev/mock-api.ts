@@ -29,6 +29,7 @@ const progress = (concepts: ConceptProgress[], o: Partial<Progress> = {}): Progr
     flowchart: 'flowchart TD\n  a[Classes and objects] --> b[Method calls] --> c[Overriding methods] --> d[Super calls] --> e[Inheritance]\n  classDef known fill:#d1fae5,stroke:#059669,color:#064e3b\n  classDef now stroke:#3b4bb0,stroke-width:3px\n  class a known\n  class c now',
     mindmap: 'mindmap\n  root((Inheritance))\n    Classes and objects 86%\n    Method calls 78%\n    Overriding methods 42%\n    Super calls 0%',
   },
+  language: { id: 'python', name: 'Python', version: '3.12', label: 'Python 3.12' },
   answer_mode: 'mcq',
   interests: ['chess', 'football'],
   use_docs: true,
@@ -148,6 +149,18 @@ export function mockApi(): Plugin {
           return send(res, snap(id))
         }
         if (path === '/code/status') return send(res, { available: true, reason: '' })
+        if (path === '/languages') {
+          const some = (versions: string[], have: string[]) => Object.fromEntries(versions.map((v) => [v, have.includes(v)]))
+          return send(res, {
+            docker: true,
+            languages: [
+              { id: 'python', name: 'Python', versions: ['3.9', '3.10', '3.11', '3.12', '3.13'], default: '3.12', installed: some(['3.9', '3.10', '3.11', '3.12', '3.13'], ['3.12']) },
+              { id: 'javascript', name: 'JavaScript', versions: ['18', '20', '22'], default: '22', installed: some(['18', '20', '22'], ['22']) },
+              { id: 'java', name: 'Java', versions: ['8', '11', '17', '21'], default: '21', installed: some(['8', '11', '17', '21'], ['21']) },
+              { id: 'cpp', name: 'C++', versions: ['11', '14', '17', '20', '23'], default: '17', installed: some(['11', '14', '17', '20', '23'], ['17']) },
+            ],
+          })
+        }
         if (/^\/students\/[^/]+\/docs/.test(path)) return send(res, { docs: ['week3-oop-notes.pdf'] })
         if (path === '/notes') return send(res, { concepts: [] })
         return send(res, { detail: 'mock: not found' }, 404)

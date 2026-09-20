@@ -52,6 +52,20 @@ def code_lesson(text: str, *, cites=(CITE,), covered: bool = True) -> str:
     })
 
 
+def stdio_lesson(text: str, *, solution: str = "SQUARE", style: str = "stdio", cites=(CITE,)) -> str:
+    """A program question in any language: the program reads n and prints n squared. Its hidden tests
+    are 3 -> 9 (forgets-to-multiply) and 0 -> 0 (zero-not-handled). `solution` is what the model claims solves it."""
+    return json.dumps({
+        "covered": True, "explanation": text, "citations": list(cites), "diagram": None,
+        "quiz": None, "open": None,
+        "code_task": {"question": "Read one integer n and print n squared. For 3 it prints 9.",
+                      "starter": "public class Main {\n    public static void main(String[] a) { }\n}",
+                      "tests": [{"stdin": "3\n", "expected": "9", "belief": "forgets-to-multiply"},
+                                {"stdin": "0\n", "expected": "0", "belief": "zero-not-handled"}],
+                      "model_solution": solution, "style": style},
+    })
+
+
 def plan(prereqs=("classes-and-objects",), subtopics=(), target="") -> str:
     """A PlanDraft: what the topic builds on, and its parts. No parts by default, so the topic is
     taught as one piece."""

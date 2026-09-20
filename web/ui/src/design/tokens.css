@@ -39,6 +39,12 @@
   --caution: oklch(0.6 0.13 68);
   --twin: oklch(0.45 0.14 275);
   --route: oklch(0.56 0.13 45);
+  /* The learning-activity heatmap: 0 is an empty day; each level is a busier one, more vivid green. */
+  --heat-0: color-mix(in oklch, var(--muted-foreground) 13%, var(--muted));
+  --heat-1: oklch(0.88 0.075 155);
+  --heat-2: oklch(0.78 0.13 155);
+  --heat-3: oklch(0.65 0.16 152);
+  --heat-4: oklch(0.5 0.15 150);
   --highlight: oklch(0.86 0.13 92);
 
   --chart-1: var(--twin);
@@ -81,6 +87,12 @@
   --caution: oklch(0.8 0.13 78);
   --twin: oklch(0.76 0.11 280);
   --route: oklch(0.76 0.12 55);
+  /* Dark: empty days sink into the page and busier days glow brighter. */
+  --heat-0: oklch(0.27 0.03 268);
+  --heat-1: oklch(0.4 0.075 155);
+  --heat-2: oklch(0.52 0.12 155);
+  --heat-3: oklch(0.66 0.16 153);
+  --heat-4: oklch(0.8 0.19 150);
   --highlight: oklch(0.8 0.11 90);
 
   --shadow-page: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 12px 32px -16px oklch(0 0 0 / 60%);

@@ -3,7 +3,8 @@ import { PlayIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { api, ApiError, type CodeRun, type Suggest } from '@/lib/api'
+import { api, ApiError, type CodeRun, type SessionLanguage, type Suggest } from '@/lib/api'
+import { useActivity } from '@/lib/useActivity'
 import { useTutor } from './context'
 
 /** How long the student must stop typing before we ask for suggestions. */
@@ -26,10 +27,18 @@ export const CodeEditor: FC<{
   /** Free play can say what the code should print, so a matching run counts as evidence. */
   allowExpected?: boolean
   placeholder?: string
+  /** A program question's own language: its code runs there, and is labelled so, whatever the sandbox picker says now.
+   * Without it the editor is the free-play sandbox and follows the picker. */
+  language?: SessionLanguage | null
   children?: ReactNode
-}> = ({ code, setCode, assisted, setAssisted, allowExpected, placeholder, children }) => {
+}> = ({ code, setCode, assisted, setAssisted, allowExpected, placeholder, language: own, children }) => {
   const { snap, refresh } = useTutor()
+  const { refresh: refreshActivity } = useActivity()
   const [expected, setExpected] = useState('')
+  const [stdin, setStdin] = useState('') // what the program reads; empty is fine
+  const language = own ?? snap.progress.language
+  const pinned = own != null // a program question pins its own language; free play follows the picker
+  const langKey = `${language.id} ${language.version}`
   const [busy, setBusy] = useState(false)
   const [out, setOut] = useState<CodeRun | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -44,30 +53,32 @@ export const CodeEditor: FC<{
   useEffect(() => {
     if (!code.trim() || snap.status === 'working') return
     if (blocked.current?.key === stateKey) return
-    const hit = cache.current.get(code)
+    const hit = cache.current.get(`${langKey}\n${code}`)
     if (hit) {
       setChips({ forCode: code, ...hit })
       return
     }
     const t = setTimeout(() => {
-      api.suggest(snap.id, code).then(
+      const [id, version] = langKey.split(' ')
+      api.suggest(snap.id, code, pinned ? { id, version } : undefined).then(
         (r) => {
           if (!r.enabled) blocked.current = { key: stateKey, reason: r.reason }
-          else cache.current.set(code, r)
+          else cache.current.set(`${langKey}\n${code}`, r)
           if (latest.current === code) setChips({ forCode: code, ...r })
         },
         () => undefined, // a missing chip must never get in the way of typing
       )
     }, PAUSE_MS)
     return () => clearTimeout(t)
-  }, [code, snap.id, snap.status, stateKey])
+  }, [code, snap.id, snap.status, stateKey, langKey, pinned])
 
   const run = async () => {
     setBusy(true)
     setError(null)
     try {
-      setOut(await api.runCode(snap.id, code, expected.trim() ? expected : null, assisted))
+      setOut(await api.runCode(snap.id, code, expected.trim() ? expected : null, assisted, stdin, own ? { id: own.id, version: own.version } : undefined))
       await refresh()
+      refreshActivity() // running code is a check-in too
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not run that.')
     } finally {
@@ -110,13 +121,25 @@ export const CodeEditor: FC<{
         <p className="text-xs text-muted-foreground">{blocked.current.reason}</p>
       ) : null}
       <Textarea
-        aria-label="Your Python code"
+        aria-label={`Your ${language.name} code`}
         spellCheck={false}
         className="min-h-40 font-mono text-xs"
-        placeholder={placeholder ?? 'Write some Python and run it.'}
+        placeholder={placeholder ?? `Write some ${language.label} and run it.`}
         value={code}
         onChange={(e) => setCode(e.target.value)}
       />
+      <details className="text-xs">
+        <summary className="text-muted-foreground cursor-pointer select-none">Program input (optional)</summary>
+        <Textarea
+          aria-label="What your program reads"
+          spellCheck={false}
+          className="mt-1.5 min-h-16 font-mono text-xs"
+          placeholder="Anything typed here is given to your program as its input."
+          maxLength={2000}
+          value={stdin}
+          onChange={(e) => setStdin(e.target.value)}
+        />
+      </details>
       {allowExpected ? (
         <Input
           aria-label="What it should print (optional)"
@@ -132,6 +155,7 @@ export const CodeEditor: FC<{
           {busy ? 'Running…' : 'Run'}
         </Button>
         {children}
+        {own ? <span className="text-muted-foreground text-xs">{own.label}</span> : null}
         {assisted ? <span className="text-xs text-muted-foreground">Used a suggestion: this counts for less.</span> : null}
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}

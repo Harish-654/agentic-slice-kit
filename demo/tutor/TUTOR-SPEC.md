@@ -326,14 +326,55 @@ counts as "fairly sure", which is the original 0.5 / 0.5 rule.
    single value on each lesson, so adding one later is a new value, not a rewrite.
 2. **Blend the two sources silently.** Every lesson says where it came from, and a
    missing topic is the student's decision.
-3. **Run or judge the student's code.** It needs a sandbox, and running a stranger's
-   code is a security decision, not a feature to bolt on.
+3. ~~Run or judge the student's code.~~ **Now done, in four languages.** Every run
+   is a throwaway Docker container with no network, a read-only root, all capabilities
+   dropped, a non-root user and memory, CPU, process and time limits
+   (`demo/tutor/sandbox.py`). See *Supported languages* below.
 4. **Watch the student's editor.** Real-time coaching in the IDE is the larger idea
    and needs a plugin; this build proves the model that would drive it.
 5. **Let the interests change grading.** Interests only choose the analogy.
-6. **Authenticate students.** A student is a typed name, so anyone who types the same
-   name sees, and can remove, that student's documents. Fine for a demo, wrong for
-   anything a teacher would rely on.
+6. ~~Authenticate students.~~ **Now done:** students sign in with a name and a password, and
+   every session and document is locked to its owner (`demo/tutor/accounts.py`,
+   `web/auth.py`). Still missing: email, so a forgotten password is reset by whoever runs
+   the server (`scripts/manage_accounts.py`), and a teacher role.
+
+### Supported languages
+
+Python 3.9 to 3.13, JavaScript (Node 18, 20, 22), Java 8, 11, 17, 21 and C++11 to C++23. One
+table, `demo/tutor/languages.py`, holds each language's versions, image, compile and run
+commands and limits; the sandbox, the prompts and the API all read it.
+
+- **The language lives in the code sandbox, and nowhere else.** It is a Language and
+  Version picker on the sandbox panel (shown on every topic), stored on the learner model
+  (`language`, `version`) and remembered. The tutor teaches anything, so lessons, quizzes,
+  plans, finals and grading never see it. Only a *program question* is told
+  (`LANGUAGE: Java 17. ... use only features that exist in that version`), and it is
+  recorded on that lesson so the question is checked and graded in the language it was
+  written in, even if the picker moves on. Route: `POST /api/sessions/{id}/language`.
+- **How a program is judged.** Python keeps function-style questions (`call` and the
+  `repr` of the result). Every other language reads input and prints output
+  (`style: "stdio"`), compared line by line ignoring trailing whitespace. Either way no
+  model call grades it: the first failing hidden test names the wrong idea it exposes.
+- **Errors map to shared ideas.** Python exceptions, JavaScript errors, Java compile and
+  runtime errors and C++ compile errors and exit signals become the same tags
+  (`index-out-of-range`, `undefined-name`, `syntax-error`, `runaway-recursion`, ...), so
+  the twin reasons about ideas, not languages.
+- **A question is fair before it is shown.** The model's own solution is run against its
+  own hidden tests first; if it fails, the question is rewritten once (told why), then
+  replaced by a multiple-choice question that says so. A probe's code is run too, in the
+  language the probe declares for it (`code_language`; Python if it says nothing; not run at
+  all for a language we cannot run, such as SQL).
+- **Isolation, per image.** Student source and test inputs go in as base64 in an
+  environment file, never on a command line or in the script (which is fixed text), and
+  the hidden inputs are removed from the student's own environment. Each language and
+  version is proven on first use (loopback-only network, read-only root, not root, a
+  hello program runs) and fails closed. Limit: a process running as the same user can
+  still read `/proc/1/environ`, so a determined student could read the hidden inputs.
+- **A missing runtime degrades, it does not break.** Lessons still work; program
+  questions become multiple choice and the page says why, with the `docker pull` line.
+- **Known limits.** Mastery is shared across languages. Single-file programs, no
+  interactive input, four languages, and compiled languages take a few seconds a run.
+  A language's runtimes are pulled once with `scripts/pull_runtimes.py`.
 
 ## 12. Build order
 
@@ -347,7 +388,7 @@ counts as "fairly sure", which is the original 0.5 / 0.5 rule.
 | | *cut line: something a judge can use without being told how* | |
 | 4 | documents become the student's choice; general knowledge by default; written questions | a day |
 | | *cut line: works with no documents at all, then with them* | |
-| 5 | code checking in a sandbox, then the editor coach | not started |
+| 5 | code checking in a sandbox, then the editor coach | done; then four languages, each with a chosen version |
 
 **Where the hours actually went:** not on writing code. On measuring why calls were
 slow or failed, which twice turned out to be our own prompts: keys never named, and a
@@ -429,15 +470,14 @@ answer key, rubric or model answer, so reading the network traffic does not give
 
 1. **Teach from the internet.** The point is to match how the teacher teaches. A
    wider source would make it a chat assistant again.
-2. **Run or judge the student's code.** It needs a sandbox, and running a stranger's
-   code is a security decision, not a feature to bolt on. Multiple choice and free
-   text come first.
+2. ~~Run or judge the student's code.~~ **Now done:** see section 11 above, and
+   *Supported languages*. Multiple choice and free text still come first.
 3. **Watch the student's editor.** Real-time coaching in the IDE is the larger
    idea and needs a plugin; this build proves the model that would drive it.
 4. **Let the interests change grading.** Interests only choose the analogy.
 5. **Grade free text without notes.** The grader sees only the teacher's material.
-6. **Authenticate students.** A student is a typed name. That is fine for a demo and
-   wrong for anything a teacher would rely on.
+6. ~~Authenticate students.~~ **Now done:** see section 11. Accounts and sign-in are in
+   `demo/tutor/accounts.py` and `web/auth.py`.
 
 ## 12. Build order
 
@@ -449,7 +489,7 @@ answer key, rubric or model answer, so reading the network traffic does not give
 | | *cut line: it remembers and forgets across days* | |
 | 3 | the chat UI and API; lessons made 4-5x faster after measuring | a day |
 | | *cut line: something a judge can use without being told how* | |
-| 4 | code checking in a sandbox, then the editor coach | not started |
+| 4 | code checking in a sandbox, then the editor coach | done; then four languages, each with a chosen version |
 
 **Where the hours actually went:** not on writing code. On finding why lessons took
 a median of 55 seconds, which turned out to be two mistakes of ours, not the model's

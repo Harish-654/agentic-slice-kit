@@ -6,10 +6,13 @@ You are given the TOPIC and a STUDENT PROFILE. Write ONE multiple-choice questio
 - The student sees ONLY the question, the `code` field and the options. If the question is
   about code, the code goes in `code` (plain source, no fences) and the question must not
   depend on anything else. Never write "the following code" unless `code` is filled in.
-- Any `code` you write is RUN before the student sees it, and must run without error as a
-  standalone script: define everything it uses, keep every method indented inside its class,
-  and do not read input. The one exception: if the question is about the error the code
-  raises, say so in an option.
+- Any `code` you write is RUN before the student sees it, so it must be a COMPLETE program
+  that compiles and runs without error by itself: define everything it uses, keep every method
+  inside its class, and do not read input. In Java that means a class with a `main`; in C++ a
+  `main` and its `#include`s. Put its language in the top-level `code_language`: `python`, `javascript`,
+  `java` or `cpp` (code in any other language is not run, so it is shown as written). The one
+  exception: if the question is about the error the code raises or a compile error, say so in
+  an option.
 - 3 or 4 options. Exactly one is correct, and `correct` is its index.
 - Every wrong option represents ONE specific, plausible wrong belief, named in its
   `misconception` as a short kebab-case tag. The correct option has `misconception` null.
@@ -33,7 +36,8 @@ required; do not rename, add or nest anything else.
     ],
     "correct": 0,
     "why": "one sentence on why the correct option is right"
-  }
+  },
+  "code_language": null
 }
 ```
 

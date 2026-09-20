@@ -18,6 +18,7 @@ Rules worth knowing:
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 from pathlib import Path
 from typing import Literal
@@ -25,7 +26,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from demo.tutor import coach, learner, learners, library, sandbox, session, visuals
+from demo.tutor import activity, coach, languages, learner, learners, library, sandbox, session, visuals
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
@@ -34,22 +35,40 @@ from slice.llm import complete
 from slice.config import settings
 from slice.records import RunState
 from slice.store import Store
-
-router = APIRouter(prefix="/api")
+from web import auth
 
 # Set by web.student, overridable in tests.
 DB = "run.db"
 flow_factory = build_flow
 get_settings = settings
 sandbox_run, sandbox_ready = sandbox.run, sandbox.available     # overridable in tests
+sandbox_installed = sandbox.installed                            # overridable in tests
 suggest_call = complete                                          # overridable in tests
 
 _running: set[str] = set()
 _lock = threading.Lock()
 
 
+class _RequestStore(Store):
+    """A store whose connection may be used and closed from a different thread than the one that opened it.
+
+    FastAPI runs a request's dependencies and its route on a thread pool, so the thread that opens a
+    request's store is not always the one that closes it, and SQLite's default refuses that with
+    "objects created in a thread can only be used in that same thread". It showed up as random 500s once
+    routes had several dependencies. This is safe here because every request has its own connection and
+    uses it one step at a time, never from two threads at once."""
+
+    def __init__(self, path):
+        super().__init__(path)                      # creates the schema; this connection is tied to this thread
+        self.db.close()
+        self.db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA foreign_keys=ON")
+
+
 def _store() -> Store:
-    return Store(Path(DB))
+    return _RequestStore(Path(DB))
 
 
 def get_store():
@@ -59,6 +78,29 @@ def get_store():
         yield s
     finally:
         s.close()
+
+
+# Every route below needs a signed-in student (web/auth.py); each then checks the run or the documents are theirs.
+current_student = auth.guard(get_store)
+router = APIRouter(prefix="/api", dependencies=[Depends(current_student)])
+
+
+def _own(s: Store, run_id: str, user: str | None) -> None:
+    """A run belongs to the student who started it. Anyone else is told it does not exist, not that it is
+    someone else's. `user` is None only when login is switched off (tests)."""
+    if user is None:
+        return
+    try:
+        owner = s.meta(run_id).get("student_id")
+    except KeyError:
+        raise HTTPException(404, "No such session.")
+    if owner != user:
+        raise HTTPException(404, "No such session.")
+
+
+def _mine(student: str, user: str | None) -> None:
+    if user is not None and student != user:
+        raise HTTPException(403, "Those are not your documents.")
 
 
 # ------------------------------------------------------------------ running
@@ -119,7 +161,9 @@ def _card(p: dict) -> dict:
                         "answered": None}
     elif p.get("code_task"):
         t = p["code_task"]                     # the tests, beliefs and solution stay on the server
-        card["code_task"] = {"question": t["question"], "starter": t["starter"], "answered": None}
+        card["code_task"] = {"question": t["question"], "starter": t["starter"],
+                             "style": t.get("style", "function"), "answered": None,
+                             "language": _language_info(p.get("language"), p.get("version"))}
     else:
         o = p["open"]
         card["open"] = {"question": o["question"], "code": o.get("code"), "answered": None}
@@ -213,9 +257,32 @@ def _messages(versions) -> list[dict]:
     return out
 
 
+def _language_info(language: str | None, version: str | None) -> dict | None:
+    """{id, name, version, label} for the page, or None when there is nothing to say (a question with no program)."""
+    if not language:
+        return None
+    lang, v = languages.resolve(language, version)
+    return {"id": lang.id, "name": lang.name, "version": v, "label": lang.label(v)}
+
+
+def _sandbox_language(s: Store, run_id: str):
+    """(language, version) of this student's code sandbox. It is chosen in the sandbox and remembered; lessons ignore it."""
+    model = LearnerModel.model_validate(s.latest(run_id, "learner_model"))
+    return languages.resolve(model.language, model.version)
+
+
+def _language_for(s: Store, run_id: str, language: str | None, version: str | None):
+    """What a request runs in: the language it names (a program question keeps its own), else the sandbox's."""
+    try:
+        return languages.resolve(language, version) if language else _sandbox_language(s, run_id)
+    except languages.UnknownLanguage as e:
+        raise HTTPException(422, str(e))
+
+
 def _progress(s: Store, run_id: str) -> dict:
     model = LearnerModel.model_validate(s.latest(run_id, "learner_model"))
     inp = s.latest(run_id, "input")
+    lang, version = _sandbox_language(s, run_id)
     concepts = inp["concepts"]
     plan = inp.get("plan")
     rows = []
@@ -235,6 +302,7 @@ def _progress(s: Store, run_id: str) -> dict:
     latest = s.latest(run_id, "lesson")
     current = latest["concept"] if latest and not s.get_state(run_id).is_terminal else None
     return {"concepts": rows, "threshold": learner.MASTERY, "mode": inp.get("mode", "quick"),
+            "language": _language_info(lang.id, version),
             "map": visuals.concept_map(plan, model, current) if plan else None,
             "plan": ({"target": plan["target"], "prereqs": plan["prereqs"],
                       "subtopics": plan.get("subtopics", [])} if plan else None),
@@ -292,7 +360,7 @@ def _need_docs(student: str, on: bool) -> None:
 
 
 @router.post("/sessions")
-def start(req: StartRequest, s: Store = Depends(get_store)):
+def start(req: StartRequest, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
     concepts = [c.strip() for c in req.concepts if c.strip()]
     exam = (req.exam_question or "").strip() or None
     if exam and req.mode != "guided":
@@ -304,7 +372,7 @@ def start(req: StartRequest, s: Store = Depends(get_store)):
             concepts = ["exam-question"]       # replaced by the topic the plan finds in the question
     if not concepts:
         raise HTTPException(422, "Say what you want to learn.")
-    student = req.student.strip()
+    student = user or req.student.strip()             # signed in: the account's name, whatever the body says
     _need_docs(student, req.use_docs)
     interests = [i.strip() for i in req.interests if i.strip()] or None
     run = session.start_session(s, student, concepts, interests, use_docs=req.use_docs,
@@ -314,12 +382,15 @@ def start(req: StartRequest, s: Store = Depends(get_store)):
 
 
 @router.get("/sessions/{run_id}")
-def get(run_id: str, s: Store = Depends(get_store)):
+def get(run_id: str, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
+    _own(s, run_id, user)
     return snapshot(s, run_id)
 
 
 @router.post("/sessions/{run_id}/answer")
-def answer(run_id: str, req: AnswerRequest, s: Store = Depends(get_store)):
+def answer(run_id: str, req: AnswerRequest, s: Store = Depends(get_store),
+           user: str | None = Depends(current_student)):
+    _own(s, run_id, user)
     snapshot(s, run_id)                                  # 404 if unknown
     q = session.open_quiz(s, run_id)
     if q is None or is_running(run_id):
@@ -354,20 +425,43 @@ def _toggle(run_id: str, s: Store, apply) -> dict:
 
 
 @router.post("/sessions/{run_id}/mode")
-def mode(run_id: str, req: ModeRequest, s: Store = Depends(get_store)):
+def mode(run_id: str, req: ModeRequest, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
     """The type of the NEXT question. The one on screen stays as it is."""
+    _own(s, run_id, user)
     if req.mode not in ("mcq", "text", "code"):
         raise HTTPException(422, "mode must be 'mcq', 'text' or 'code'.")
     if req.mode == "code":
-        ok, why = sandbox_ready()
+        lang, version = _sandbox_language(s, run_id)
+        ok, why = sandbox_ready(lang.id, version)
         if not ok:
             raise HTTPException(422, "Program questions need the code sandbox. " + why)
     return _toggle(run_id, s, lambda: session.set_answer_mode(s, run_id, req.mode))
 
 
+class LanguageRequest(BaseModel):
+    language: str = Field(max_length=20)
+    version: str | None = Field(default=None, max_length=10)       # None: that language's default
+
+
+@router.post("/sessions/{run_id}/language")
+def language(run_id: str, req: LanguageRequest, s: Store = Depends(get_store),
+             user: str | None = Depends(current_student)):
+    """The code sandbox's language and version, picked in the sandbox. Applies to the editor and to the NEXT program
+    question; it never changes what a lesson is about, and a question already asked keeps the language it was written in."""
+    _own(s, run_id, user)
+    snapshot(s, run_id)
+    try:
+        languages.resolve(req.language, req.version)
+    except languages.UnknownLanguage as e:
+        raise HTTPException(422, str(e))
+    return _toggle(run_id, s, lambda: session.set_language(s, run_id, req.language, req.version))
+
+
 @router.post("/sessions/{run_id}/source")
-def source(run_id: str, req: SourceRequest, s: Store = Depends(get_store)):
+def source(run_id: str, req: SourceRequest, s: Store = Depends(get_store),
+           user: str | None = Depends(current_student)):
     """Teach from the student's documents (on) or from general knowledge (off)."""
+    _own(s, run_id, user)
     snapshot(s, run_id)
     _need_docs(s.meta(run_id)["student_id"], req.use_docs)
     return _toggle(run_id, s, lambda: session.set_use_docs(s, run_id, req.use_docs))
@@ -378,8 +472,10 @@ class ChoiceRequest(BaseModel):
 
 
 @router.post("/sessions/{run_id}/choice")
-def choice(run_id: str, req: ChoiceRequest, s: Store = Depends(get_store)):
+def choice(run_id: str, req: ChoiceRequest, s: Store = Depends(get_store),
+           user: str | None = Depends(current_student)):
     """The student's pick from the "what next?" menu after an explanation."""
+    _own(s, run_id, user)
     snapshot(s, run_id)
     q = session.open_choice(s, run_id)
     if q is None or is_running(run_id):
@@ -392,8 +488,10 @@ def choice(run_id: str, req: ChoiceRequest, s: Store = Depends(get_store)):
 
 
 @router.post("/sessions/{run_id}/fallback")
-def fallback(run_id: str, req: GapRequest, s: Store = Depends(get_store)):
+def fallback(run_id: str, req: GapRequest, s: Store = Depends(get_store),
+             user: str | None = Depends(current_student)):
     """The student's answer to "that is not in your documents"."""
+    _own(s, run_id, user)
     if req.choice not in ("general", "skip"):
         raise HTTPException(422, "choice must be 'general' or 'skip'.")
     snapshot(s, run_id)
@@ -410,13 +508,39 @@ class CodeRequest(BaseModel):
     concept: str | None = None                       # defaults to the topic of the latest lesson
     expected: str | None = Field(default=None, max_length=2000)   # what a correct run prints
     assisted: bool = False          # a suggestion chip helped, so a match proves nothing
+    stdin: str = Field(default="", max_length=2000)   # what the program reads, for a program that reads input
+    language: str | None = Field(default=None, max_length=20)      # a program question's own; else the sandbox's
+    version: str | None = Field(default=None, max_length=10)
+
+
+@router.get("/me/activity")
+def my_activity(tz: int = 0, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
+    """The signed-in student's day-by-day activity and streak. `tz` is the browser's
+    Date.getTimezoneOffset(), so a day is the student's own day."""
+    if user is None:                                     # login off (tests): there is nobody to report on
+        return activity.report(s, "", tz)
+    return activity.report(s, user, tz)
+
+
+@router.get("/languages")
+def language_list():
+    """What the code sandbox can run, and which runtimes this machine has, so its picker offers only real choices."""
+    have = sandbox_installed()                         # None when Docker cannot be asked
+    out = languages.catalogue()
+    for lang in out:
+        lang["installed"] = {v: have is not None and image in have for v, image in lang.pop("images").items()}
+    return {"languages": out, "docker": have is not None}
 
 
 @router.get("/code/status")
-def code_status():
-    """Whether code can run at all here. False until the isolation self-test passes."""
-    ok, why = sandbox_ready()
-    return {"available": ok, "reason": why}
+def code_status(language: str | None = None, version: str | None = None):
+    """Whether code can run at all here, in this language. False until the isolation self-test passes."""
+    try:
+        lang, v = languages.resolve(language, version)
+    except languages.UnknownLanguage as e:
+        raise HTTPException(422, str(e))
+    ok, why = sandbox_ready(lang.id, v)
+    return {"available": ok, "reason": why, "language": lang.id, "version": v}
 
 
 def _coach_concept(s: Store, run_id: str, asked: str | None) -> str:
@@ -432,12 +556,16 @@ def _coach_concept(s: Store, run_id: str, asked: str | None) -> str:
 class SuggestRequest(BaseModel):
     code: str = Field(max_length=8000)
     concept: str | None = None
+    language: str | None = Field(default=None, max_length=20)      # a program question's own; else the sandbox's
+    version: str | None = Field(default=None, max_length=10)
 
 
 @router.post("/sessions/{run_id}/suggest")
-def suggest(run_id: str, req: SuggestRequest, s: Store = Depends(get_store)):
+def suggest(run_id: str, req: SuggestRequest, s: Store = Depends(get_store),
+            user: str | None = Depends(current_student)):
     """Suggestion chips while the student types. The twin decides whether to help: a topic
     the student has not mastered gets no chips and no model call."""
+    _own(s, run_id, user)
     snapshot(s, run_id)
     if is_running(run_id):
         raise HTTPException(409, "Wait for the next lesson.")
@@ -447,31 +575,36 @@ def suggest(run_id: str, req: SuggestRequest, s: Store = Depends(get_store)):
         return {"enabled": False, "reason": "Try it yourself first: suggestions unlock when this topic is solid.",
                 "suggestions": []}
     level = learner.level_for(learner.effective_mastery(model, concept))
+    lang, version = _language_for(s, run_id, req.language, req.version)
     chips = coach.suggest(suggest_call, get_settings(), Budget(s, run_id, get_settings()),
-                          concept, level, req.code)
+                          concept, level, req.code, lang.prompt_line(version))
     return {"enabled": True, "reason": "You know this topic well, so suggestions are on.",
             "suggestions": chips}
 
 
 @router.post("/sessions/{run_id}/code")
-def run_code(run_id: str, req: CodeRequest, s: Store = Depends(get_store)):
+def run_code(run_id: str, req: CodeRequest, s: Store = Depends(get_store),
+             user: str | None = Depends(current_student)):
     """The editor coach: run the student's code in the sandbox and turn the outcome into
     evidence on the same learner model the quizzes feed. Nothing about the tutoring
     loop changes; this only appends a `code_run` record and, when the run proves
     something, a new `learner_model`."""
+    _own(s, run_id, user)
     snapshot(s, run_id)
-    ok, why = sandbox_ready()
+    lang, version = _language_for(s, run_id, req.language, req.version)
+    ok, why = sandbox_ready(lang.id, version)
     if not ok:
         raise HTTPException(503, "Running code is switched off here. " + why)
     if is_running(run_id):
         raise HTTPException(409, "Wait for the next lesson before running code.")
     concept = _coach_concept(s, run_id, req.concept)
 
-    res = sandbox_run(req.code)
-    correct, tag = coach.evidence(res, req.expected)
+    res = sandbox_run(req.code, language=lang.id, version=version, stdin=req.stdin)
+    correct, tag = coach.evidence(res, req.expected, lang.id)
     if req.assisted and correct:
         correct = None
     s.append(run_id, "code_run", {"concept": concept, "code": req.code, "expected": req.expected,
+                                  "language": lang.id, "version": version, "stdin": req.stdin,
                                   "stdout": res.stdout, "stderr": res.stderr, "exit_code": res.exit_code,
                                   "timed_out": res.timed_out, "correct": correct, "misconception": tag},
              "student")
@@ -483,12 +616,13 @@ def run_code(run_id: str, req: CodeRequest, s: Store = Depends(get_store)):
         learners.save(s, model)
     return {"stdout": res.stdout, "stderr": res.stderr, "exit_code": res.exit_code,
             "timed_out": res.timed_out, "correct": correct, "misconception": tag,
-            "hint": coach.hint(res, correct), "progress": _progress(s, run_id)}
+            "hint": coach.hint(res, correct, lang.id), "progress": _progress(s, run_id)}
 
 
 @router.post("/sessions/{run_id}/resume")
-def resume(run_id: str, s: Store = Depends(get_store)):
+def resume(run_id: str, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
     """For a run left mid-step (the server restarted)."""
+    _own(s, run_id, user)
     if _status(s, run_id) == "stalled":
         _kick(run_id)
     return snapshot(s, run_id)
@@ -497,14 +631,17 @@ def resume(run_id: str, s: Store = Depends(get_store)):
 # ------------------------------------------------------------------ documents
 
 @router.get("/students/{student}/docs")
-def list_docs(student: str):
+def list_docs(student: str, user: str | None = Depends(current_student)):
+    _mine(student, user)
     return {"docs": library.docs(student)}
 
 
 @router.post("/students/{student}/docs")
-def upload_docs(student: str, files: list[UploadFile], s: Store = Depends(get_store)):
+def upload_docs(student: str, files: list[UploadFile], s: Store = Depends(get_store),
+                user: str | None = Depends(current_student)):
     """Sync on purpose: reading, converting and embedding a file is slow, and a plain
     `def` route runs on a worker thread instead of blocking the server."""
+    _mine(student, user)
     try:
         for f in files:
             # Read one byte past the limit so an oversize file is seen, not truncated.
@@ -515,12 +652,15 @@ def upload_docs(student: str, files: list[UploadFile], s: Store = Depends(get_st
 
 
 @router.post("/students/{student}/docs/sample")
-def sample_docs(student: str, s: Store = Depends(get_store)):
+def sample_docs(student: str, s: Store = Depends(get_store), user: str | None = Depends(current_student)):
+    _mine(student, user)
     return {"docs": library.add_sample(s, student)}
 
 
 @router.delete("/students/{student}/docs/{name}")
-def remove_doc(student: str, name: str, s: Store = Depends(get_store)):
+def remove_doc(student: str, name: str, s: Store = Depends(get_store),
+               user: str | None = Depends(current_student)):
+    _mine(student, user)
     if name not in library.docs(student):
         raise HTTPException(404, "No such document.")
     library.delete(s, student, name)

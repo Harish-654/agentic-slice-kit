@@ -23,17 +23,17 @@ import re
 
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Form
+from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from demo.tutor import session
+from demo.tutor import accounts, session, visuals
 from demo.tutor.flow import build_flow
 from demo.tutor.schema import LearnerModel
 from slice import runner
 from slice.config import settings
 from slice.store import Store
-from web import tutor_api
+from web import auth, tutor_api
 
 DB = os.environ.get("SLICE_DB", "run.db")
 UI_DIST = Path(__file__).parent / "ui" / "dist"
@@ -47,6 +47,24 @@ tutor_api.DB = DB
 
 def _store() -> Store:
     return Store(DB)
+
+
+def _classic_user(request: Request) -> str | None:
+    """The signed-in student, or a redirect to the sign-in page. None only when login is off (tests)."""
+    if not auth.REQUIRED:
+        return None
+    s = _store()
+    try:
+        name = accounts.who(s, request.cookies.get(auth.COOKIE))
+    finally:
+        s.close()
+    if name is None:
+        raise HTTPException(status_code=303, headers={"Location": "/"})
+    return name
+
+
+def _mine(s: Store, run: str, user: str | None) -> bool:
+    return user is None or s.meta(run).get("student_id") == user
 
 
 def _step(s: Store, run: str) -> None:
@@ -106,11 +124,12 @@ def _page(title: str, body: str, mermaid: bool = False) -> HTMLResponse:
 
 
 @classic.get("/", response_class=HTMLResponse)
-def home():
+def home(user: str | None = Depends(_classic_user)):
+    who = (f"<p>Signed in as <b>{html.escape(user)}</b>.</p>" if user else
+           "<p><label>Your name or id<br><input type='text' name='student' required></label></p>")
     return _page("Tutor",
                  "<h1>Learn Python from your teacher's notes</h1>"
-                 "<form method='post' action='/classic/start'>"
-                 "<p><label>Your name or id<br><input type='text' name='student' required></label></p>"
+                 "<form method='post' action='/classic/start'>" + who +
                  "<p><label>What to learn (comma separated)<br>"
                  "<input type='text' name='concepts' "
                  "value='mutable-defaults, is-vs-equals, list-slicing'></label></p>"
@@ -120,22 +139,25 @@ def home():
 
 
 @classic.post("/start")
-def start(student: str = Form(...), concepts: str = Form(...), interests: str = Form("")):
+def start(student: str = Form(""), concepts: str = Form(...), interests: str = Form(""),
+          user: str | None = Depends(_classic_user)):
     s = _store()
     cs = [c.strip() for c in concepts.split(",") if c.strip()]
     ints = [i.strip() for i in interests.split(",") if i.strip()] or None
-    run = session.start_session(s, student.strip(), cs, ints, use_docs=False)
+    run = session.start_session(s, user or student.strip(), cs, ints, use_docs=False)
     session.set_answer_mode(s, run, "mcq")
     _step(s, run)
     return RedirectResponse(f"{C}/s/{run}", status_code=303)
 
 
 @classic.get("/s/{run}", response_class=HTMLResponse)
-def show(run: str):
+def show(run: str, user: str | None = Depends(_classic_user)):
     s = _store()
     try:
         state = s.get_state(run)
     except KeyError:
+        return _page("Not found", "<h1>No such session</h1>")
+    if not _mine(s, run, user):
         return _page("Not found", "<h1>No such session</h1>")
     model = LearnerModel.model_validate(s.latest(run, "learner_model"))
     lesson, checks = s.latest(run, "lesson"), s.history(run, "check")
@@ -166,8 +188,9 @@ def show(run: str):
              f"<p><span class='pill'>{html.escape(lesson['style'].replace('_', ' '))}</span>"
              f"<span class='cite'>from {html.escape(', '.join(lesson['citations']) or 'teacher note')}</span></p>"
              f"{_rich(lesson['explanation'])}")
-    if lesson.get("diagram"):
-        body += f"<pre class='mermaid'>{html.escape(lesson['diagram'])}</pre>"
+    diagram = visuals.safe_diagram(lesson.get("diagram"))
+    if diagram:
+        body += f"<pre class='mermaid'>{html.escape(diagram)}</pre>"
 
     quiz = lesson["quiz"]
     body += f"<div class='card'><b>Check yourself</b>{_rich(quiz['question'])}"
@@ -176,13 +199,13 @@ def show(run: str):
     opts = "".join(f"<label class='opt'><input type='radio' name='choice' value='{i}' required> "
                    f"{html.escape(o['text'])}</label>" for i, o in enumerate(quiz["options"]))
     body += f"<form method='post' action='{C}/s/{run}/answer'>{opts}<button>Answer</button></form></div>"
-    return _page(lesson["concept"], body + BUSY, mermaid=bool(lesson.get("diagram")))
+    return _page(lesson["concept"], body + BUSY, mermaid=bool(diagram))
 
 
 @classic.post("/s/{run}/answer")
-def answer(run: str, choice: int = Form(...)):
+def answer(run: str, choice: int = Form(...), user: str | None = Depends(_classic_user)):
     s = _store()
-    q = session.open_quiz(s, run)
+    q = session.open_quiz(s, run) if _mine(s, run, user) else None
     if q is not None:
         session.submit_mcq(s, q.id, choice)
         _step(s, run)
@@ -190,6 +213,7 @@ def answer(run: str, choice: int = Form(...)):
 
 
 # ---- wiring. The static mount catches everything, so it must be registered last.
+app.include_router(auth.build_router(tutor_api.get_store))
 app.include_router(tutor_api.router)
 app.include_router(classic)
 

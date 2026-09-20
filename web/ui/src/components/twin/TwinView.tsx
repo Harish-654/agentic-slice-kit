@@ -1,6 +1,7 @@
 import type { FC, ReactNode } from 'react'
 import { m } from 'motion/react'
 import { CheckIcon, CircleDashedIcon, RotateCcwIcon, SparklesIcon } from 'lucide-react'
+import { ActivityHeatmap } from '@/components/activity/ActivityHeatmap'
 import { MasteryRing } from '@/components/atlas/MasteryRing'
 import { useTutor } from '@/components/tutor/context'
 import { BAND, band, pct } from '@/design/status'
@@ -51,7 +52,7 @@ export const TwinView: FC = () => {
         ) : null}
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Panel title="What you know" note={`“Got it” is ${Math.round(progress.threshold * 100)}%. Untouched topics read 0%: the tutor’s starting guess is not something you earned.`} className="lg:col-span-2">
           <m.ul variants={stagger(0.06)} initial="initial" animate="animate" className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
             {progress.concepts.map((c) => {
@@ -100,6 +101,10 @@ export const TwinView: FC = () => {
               })}
             </ol>
           )}
+        </Panel>
+
+        <Panel title="Learning activity" note="Every answered question and every code run, across all your sessions. Your streak counts the days in a row you did something." className="min-w-0 lg:col-span-2">
+          <ActivityHeatmap bare />
         </Panel>
       </div>
     </div>

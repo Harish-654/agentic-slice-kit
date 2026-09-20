@@ -25,7 +25,7 @@ from slice import callback
 from slice.llm import SchemaFailure, Truncated, complete
 from slice.records import RunState
 
-from . import coach, curriculum, learner, learners, library, sandbox, steps
+from . import coach, curriculum, languages, learner, learners, library, sandbox, steps
 from .schema import Grade, LearnerModel, Lesson, OpenQuestion, PlanDraft, Probe
 
 STUDENT_WAIT_MINUTES = 24 * 60
@@ -38,6 +38,7 @@ _PROMPTS = Path(__file__).parent / "prompts"
 FORMATS = {"mcq": "format_mcq", "text": "format_open", "code": "format_code"}
 KINDS = {"mcq": "multiple-choice", "text": "written", "code": "program"}
 PROBE_TRIES = 2                 # a probe whose code will not run gets one retry, then is skipped
+TASK_TRIES = 2                  # a program question whose own solution fails its own tests gets one retry
 # What a student asks for when they want more of a lesson instead of the quiz.
 FOCUS = {"example": "a NEW worked example of the same idea, different from anything already shown",
          "more_detail": "the same idea explained in more detail, one step at a time",
@@ -52,12 +53,35 @@ def _notes(chunks) -> str:
     return "\n\n".join(f"[{c.cite()}]\n{c.text}" for c in chunks)
 
 
+def _sandbox(model: LearnerModel):
+    """The (language, version) of the code sandbox: what program questions are written in and run as. It is
+    chosen in the sandbox and never changes what a lesson is about."""
+    return languages.resolve(model.language, model.version)
+
+
+def _format(want: str, language: str | None) -> str:
+    """Python program questions call a function; every other language reads input and prints output."""
+    return "format_code_stdio" if want == "code" and (language or "python") != "python" else FORMATS[want]
+
+
 def build_teach_messages(concept, style, source, want, profile, misconception,
-                         recent: bool = True, notes: str = "", focus: str | None = None) -> list[dict]:
+                         recent: bool = True, notes: str = "", focus: str | None = None,
+                         language: str | None = None, version: str | None = None,
+                         problem: str | None = None) -> list[dict]:
     """`source` is "general" or "docs"; `want` is "mcq", "text" (an open question) or "code".
-    `focus` is what a guided student asked for instead of the quiz (a key of FOCUS)."""
-    system = _prompt("teach", f"source_{source}", FORMATS[want])
-    user = [f"TOPIC: {concept}", f"STYLE: {style}", "STUDENT PROFILE:\n" + profile]
+    `focus` is what a guided student asked for instead of the quiz (a key of FOCUS). `language` and `version` are the
+    sandbox's and matter only for a program question (`want == "code"`); every other lesson follows its topic.
+    `problem` is why the program question written last time was rejected (its own solution failed its own tests)."""
+    system = _prompt("teach", f"source_{source}", _format(want, language))
+    user = [f"TOPIC: {concept}"]
+    if want == "code":
+        lang, v = languages.resolve(language, version)
+        user.append(lang.prompt_line(v))
+    user += [f"STYLE: {style}", "STUDENT PROFILE:\n" + profile]
+    if problem:
+        user.append("YOUR PREVIOUS PROGRAM QUESTION WAS REJECTED: when its own `model_solution` was run against "
+                    f"its own `tests` it failed:\n{problem}\nWrite a different question whose model_solution "
+                    "passes every one of its tests exactly.")
     if focus:
         user.append("THE STUDENT ASKED FOR: " + FOCUS[focus])
     if misconception:
@@ -111,11 +135,13 @@ def build_final_messages(target: str, parts: list[str], exam: str | None, profil
             {"role": "user", "content": "\n\n".join(user)}]
 
 
-def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbox.available):
+def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbox.available,
+               judge=sandbox.run_tests):
     """`call` and `find` are injected so the whole loop runs offline: no key, no
     network, no embedding model. See demo/tutor/stub.py. `find(store, student,
     query)` returns the student's own chunks relevant to the query. `run` executes
-    a student's program and `ready()` says whether it may (see sandbox.py)."""
+    a student's program, `judge` runs one program against several inputs, and
+    `ready(language, version)` says whether that language may run (see sandbox.py)."""
 
     def _model(ctx) -> LearnerModel:
         return LearnerModel.model_validate(ctx.latest("learner_model"))
@@ -207,8 +233,10 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
             got = call(settings=ctx.settings, budget=ctx.budget,
                        messages=build_probe_messages(concept, learner.profile(model, concept), problem),
                        schema=Probe, step="probe", reasoning=False)
-            problem = (coach.question_code_problem(got.quiz.model_dump(), run)
-                       if got.quiz.code and ready()[0] else None)
+            # The probe names the language of its own code. One we cannot run (SQL, HTML...) is shown unchecked.
+            lang = languages.LANGUAGES.get((got.code_language or "python").strip().lower())
+            problem = (coach.question_code_problem(got.quiz.model_dump(), run, lang.id, lang.default)
+                       if got.quiz.code and lang and ready(lang.id, lang.default)[0] else None)
             if problem is None:
                 break
             ctx.append("probe_rejected", {"concept": concept, "problem": problem}, produced_by="system")
@@ -348,21 +376,42 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
             source = "docs"
 
         want = model.answer_mode
+        lang, ver = _sandbox(model)
         wrong, misconception, recent = _history(ctx, model, concept)
         style = "worked_example" if focus == "example" else learner.style_for(wrong)
-        lesson = call(
-            settings=ctx.settings, budget=ctx.budget,
-            messages=build_teach_messages(concept, style, source, want,
-                                          learner.profile(model, concept), misconception,
-                                          recent, _notes(chunks), focus),
-            schema=Lesson, step="teach", reasoning=False,
-        )
 
-        if source == "docs" and not lesson.covered:
-            return _doc_gap(ctx, concept)
-        if lesson.kind != want:                             # asked for one type, got another
-            return _fail(ctx, "wrong_question_type",
-                         f"Asked for a {KINDS[want]} question and the model wrote the other kind.")
+        def teach(kind, problem=None):
+            return call(
+                settings=ctx.settings, budget=ctx.budget,
+                messages=build_teach_messages(concept, style, source, kind,
+                                              learner.profile(model, concept), misconception,
+                                              recent, _notes(chunks), focus, lang.id, ver, problem),
+                schema=Lesson, step="teach", reasoning=False,
+            )
+
+        # A program question is only shown once its own model solution passes its own hidden tests, else a
+        # right answer could be marked wrong. Two tries, then a multiple-choice question instead. If this
+        # language cannot run code here at all, it is multiple choice from the start.
+        kinds = [want]
+        if want == "code":
+            kinds = [want] * TASK_TRIES + ["mcq"] if ready(lang.id, ver)[0] else ["mcq"]
+        problem, note = None, ""
+        for kind in kinds:
+            lesson = teach(kind, problem)
+            if source == "docs" and not lesson.covered:
+                return _doc_gap(ctx, concept)
+            if lesson.kind != kind:                         # asked for one type, got another
+                return _fail(ctx, "wrong_question_type",
+                             f"Asked for a {KINDS[kind]} question and the model wrote the other kind.")
+            if kind != "code":
+                break
+            problem = coach.task_problem(lesson.code_task.model_dump(), run, lang.id, ver, judge)
+            if problem is None:
+                break
+            ctx.append("task_rejected", {"concept": concept, "problem": problem}, produced_by="system")
+        if want == "code" and lesson.kind != "code":
+            note = (f"\n\n*Program questions could not be set up for {lang.label(ver)} just now, "
+                    "so this check is multiple choice.*")
 
         allowed = {c.cite() for c in chunks}
         cited = [c for c in lesson.citations if c in allowed] if source == "docs" else []
@@ -371,6 +420,9 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
 
         payload = lesson.model_dump() | {"citations": cited, "concept": concept, "style": style,
                                          "source": source, "notes": _notes(chunks)}
+        payload["explanation"] += note
+        if lesson.code_task:                  # the question stays in its language even if the sandbox picker moves on
+            payload |= {"language": lang.id, "version": ver}
         if held:                              # the check is written now but shown only on "quiz me"
             payload["held"] = True
         ctx.append("lesson", payload, produced_by="agent:teach")
@@ -405,10 +457,15 @@ def build_flow(call=complete, find=library.search, run=sandbox.run, ready=sandbo
                      else "A good answer: " + lesson["open"]["model_answer"])
             feedback = "That is fine, not knowing is useful to know. " + teach
         elif task:                   # a program: run it against the hidden tests, no model call
-            ok, why = ready()
+            mine = _model(ctx)
+            lang, ver = languages.resolve(lesson.get("language") or mine.language, lesson.get("version") or mine.version)
+            ok, why = ready(lang.id, ver)
             if not ok:
                 return _fail(ctx, "sandbox_unavailable", "Running code is switched off here. " + why)
-            g = coach.grade_program(task, given["code"], run)
+            try:
+                g = coach.grade_program(task, given["code"], run, lang.id, ver, judge)
+            except coach.SandboxUnavailable as e:
+                return _fail(ctx, "sandbox_unavailable", f"The code sandbox failed. {e}")
             correct, mis, feedback, stem = g.correct, g.misconception, g.feedback, task["question"]
             if correct and given.get("assisted"):
                 confidence = "low"   # a suggestion did part of the work, so the win counts for less

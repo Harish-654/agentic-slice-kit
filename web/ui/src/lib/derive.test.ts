@@ -6,6 +6,7 @@ const c = (concept: string, mastery: number, o: Partial<ConceptProgress> = {}): 
   concept, mastery, mastered: mastery >= 0.75, seen: true, review_due: false, beliefs: [], ...o,
 })
 const progress = (concepts: ConceptProgress[], plan: Progress['plan'] = null): Progress => ({
+  language: { id: 'python', name: 'Python', version: '3.12', label: 'Python 3.12' },
   concepts, threshold: 0.75, mode: plan ? 'guided' : 'quick', plan, map: null, answer_mode: 'mcq', interests: [], use_docs: false, docs: [],
 })
 const fb = (id: string, correct: boolean, confidence: FeedbackMsg['confidence'], dont_know = false): FeedbackMsg => ({

@@ -31,8 +31,8 @@ CLEAN = """class Dog:
 
 Dog('Buster').bark()
 """
-ON = lambda: (True, "")          # noqa: E731
-OFF = lambda: (False, "Docker is not installed.")   # noqa: E731
+ON = lambda *a, **k: (True, "")          # noqa: E731
+OFF = lambda *a, **k: (False, "Docker is not installed.")   # noqa: E731
 
 
 def go(store, run, stub, ready=ON, run_code=local_run):
@@ -113,7 +113,7 @@ def test_with_the_sandbox_off_the_probe_is_shown_unchecked_rather_than_blocked(t
     store = Store(tmp_path / "r.db")
     run = guided(store)
     stub = Stub({"plan": [plan()], "probe": [probe(BROKEN)]})
-    go(store, run, stub, ready=OFF, run_code=lambda c: 1 / 0)    # must not even try to run it
+    go(store, run, stub, ready=OFF, run_code=lambda c, **k: 1 / 0)    # must not even try to run it
     assert stub.calls == ["plan", "probe"]
     assert store.history(run, "lesson")[0].payload["quiz"]["code"] == BROKEN
 
@@ -122,7 +122,7 @@ def test_a_probe_without_code_never_touches_the_sandbox(tmp_path):
     store = Store(tmp_path / "r.db")
     run = guided(store)
     stub = Stub({"plan": [plan()], "probe": [probe()]})
-    go(store, run, stub, ready=lambda: 1 / 0, run_code=lambda c: 1 / 0)
+    go(store, run, stub, ready=lambda *a, **k: 1 / 0, run_code=lambda c, **k: 1 / 0)
     assert stub.calls == ["plan", "probe"]
 
 
@@ -133,7 +133,8 @@ import pytest  # noqa: E402
 def test_the_real_sandbox_catches_the_broken_probe_code_and_passes_the_clean_one():
     from demo.tutor import sandbox
     ok, why = sandbox.available(force=True)
-    assert ok, why                                     # needs Docker running and the image pulled
+    if not ok:
+        pytest.skip(why)                               # needs Docker running and the image pulled
     problem = coach.question_code_problem(quiz(BROKEN), sandbox.run)
     assert problem and "AttributeError" in problem
     assert coach.question_code_problem(quiz(CLEAN), sandbox.run) is None

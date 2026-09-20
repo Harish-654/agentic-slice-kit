@@ -10,7 +10,7 @@ from demo.tutor import library
 from demo.tutor.stub import Stub, grade, lesson, open_lesson
 from slice.retrieve import Chunk
 from tests.test_tutor import S
-from web import student, tutor_api
+from web import auth, student, tutor_api
 
 NOTES = [Chunk("c1", "python-notes.md", 0, "Defaults are evaluated once.", 0.1)]
 WRONG, RIGHT = 0, 1
@@ -21,6 +21,7 @@ def make(tmp_path, monkeypatch, script, call=None, find=lambda *a, **k: NOTES):
     monkeypatch.setattr(student, "DB", db)
     monkeypatch.setattr(tutor_api, "DB", db)
     monkeypatch.setattr(library, "ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(auth, "REQUIRED", False)     # these tests are about the tutor; test_tutor_auth.py signs in
     stub = call or Stub(script)
     monkeypatch.setattr(tutor_api, "flow_factory", lambda: build_flow(call=stub, find=find))
     monkeypatch.setattr(tutor_api, "get_settings", lambda: S)

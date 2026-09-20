@@ -38,7 +38,8 @@ IMPORTANT: the task goes under the key `code_task`. `quiz` and `open` MUST both 
       {"call": "total([1, 2, 3])", "expected": "6", "belief": "forgets-to-accumulate"},
       {"call": "total([])", "expected": "0", "belief": "empty-input-not-handled"}
     ],
-    "model_solution": "def total(prices):\n    return sum(prices)"
+    "model_solution": "def total(prices):\n    return sum(prices)",
+    "style": "function"
   }
 }
 ```

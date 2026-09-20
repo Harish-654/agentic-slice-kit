@@ -1,43 +1,30 @@
 import { useCallback, useState } from 'react'
 import { StartScreen } from '@/components/tutor/StartScreen'
 import { TutorRuntime } from '@/components/tutor/TutorRuntime'
+import { AuthGate } from '@/features/auth/AuthGate'
+import { AuthProvider } from '@/features/auth/useAuth'
 import { Session } from '@/features/session/Session'
+import { KEY, read, write } from '@/lib/storage'
 
-const KEY = { session: 'tutor.session', student: 'tutor.student' }
+/** A signed-in student: the session they had open, or the start screen. */
+function Learning({ student }: { student: string }) {
+  // A session id left in the browser belongs to whoever started it. Only pick it up again for the same student.
+  const [sessionId, setSessionId] = useState<string | null>(() => (read(KEY.student) === student ? read(KEY.session) : null))
 
-// Storage can be unavailable (private windows); the app must work without it.
-const read = (k: string) => {
-  try {
-    return localStorage.getItem(k)
-  } catch {
-    return null
-  }
-}
-const write = (k: string, v: string | null) => {
-  try {
-    if (v === null) localStorage.removeItem(k)
-    else localStorage.setItem(k, v)
-  } catch {
-    /* fine */
-  }
-}
-
-export default function App() {
-  const [sessionId, setSessionId] = useState<string | null>(() => read(KEY.session))
-  const [student, setStudent] = useState(() => read(KEY.student) ?? '')
-
-  const started = useCallback((id: string, name: string) => {
-    write(KEY.session, id)
-    write(KEY.student, name)
-    setStudent(name)
-    setSessionId(id)
-  }, [])
+  const started = useCallback(
+    (id: string) => {
+      write(KEY.session, id)
+      write(KEY.student, student)
+      setSessionId(id)
+    },
+    [student],
+  )
   const restart = useCallback(() => {
     write(KEY.session, null)
     setSessionId(null)
   }, [])
 
-  if (!sessionId) return <StartScreen initialName={student} onStarted={started} />
+  if (!sessionId) return <StartScreen student={student} onStarted={started} />
 
   return (
     <TutorRuntime key={sessionId} sessionId={sessionId} onRestart={restart}>
@@ -49,5 +36,13 @@ export default function App() {
         )
       }
     </TutorRuntime>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate>{(student) => <Learning student={student} />}</AuthGate>
+    </AuthProvider>
   )
 }

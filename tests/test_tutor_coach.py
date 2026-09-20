@@ -36,8 +36,8 @@ def test_a_timeout_or_a_bare_exit_is_no_evidence():
 # ---------------------------------------------------------------- the route
 
 def ready(monkeypatch, result=None, ok=True):
-    monkeypatch.setattr(tutor_api, "sandbox_ready", lambda: (ok, "" if ok else "Docker is not installed."))
-    monkeypatch.setattr(tutor_api, "sandbox_run", lambda code: result or res("4\n"))
+    monkeypatch.setattr(tutor_api, "sandbox_ready", lambda *a, **k: (ok, "" if ok else "Docker is not installed."))
+    monkeypatch.setattr(tutor_api, "sandbox_run", lambda code, **k: result or res("4\n"))
 
 
 def test_a_failing_run_becomes_a_misconception_on_the_learner_model(tmp_path, monkeypatch):
@@ -68,11 +68,12 @@ def test_code_that_merely_runs_leaves_the_model_alone(tmp_path, monkeypatch):
 def test_nothing_runs_when_the_sandbox_is_not_proven(tmp_path, monkeypatch):
     c, _ = make(tmp_path, monkeypatch, {"teach": [lesson("PLAIN")]})
     ready(monkeypatch, ok=False)
-    monkeypatch.setattr(tutor_api, "sandbox_run", lambda code: pytest.fail("ran without isolation"))
+    monkeypatch.setattr(tutor_api, "sandbox_run", lambda code, **k: pytest.fail("ran without isolation"))
     run = start(c)
     settle(c, run)
 
-    assert c.get("/api/code/status").json() == {"available": False, "reason": "Docker is not installed."}
+    assert c.get("/api/code/status").json() == {"available": False, "reason": "Docker is not installed.",
+                                                "language": "python", "version": "3.12"}
     assert c.post(f"/api/sessions/{run}/code", json={"code": "1"}).status_code == 503
 
 
@@ -89,6 +90,7 @@ def test_code_for_a_topic_outside_the_session_is_refused(tmp_path, monkeypatch):
 @pytest.mark.integration
 def test_the_real_sandbox_is_isolated_and_stops_runaway_code():
     ok, why = sandbox.available(force=True)
-    assert ok, why                          # needs Docker running and `docker pull python:3.12-slim`
+    if not ok:
+        pytest.skip(why)                    # needs Docker running and `docker pull python:3.12-slim`
     assert sandbox.run("print(6*7)").stdout == "42\n"
     assert sandbox.run("while True: pass", timeout=3).timed_out

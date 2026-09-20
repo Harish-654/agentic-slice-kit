@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from demo.tutor.flow import build_flow
 from demo.tutor.stub import Stub, lesson
 from slice.retrieve import Chunk
-from web import expert, student
+from web import auth, expert, student
 
 NOTES = [Chunk("c1", "python-notes.md", 0, "Defaults are evaluated once.", 0.1)]
 
@@ -14,6 +14,7 @@ def client(tmp_path, monkeypatch, script):
     stub = Stub(script)
     for mod in (student, expert):
         monkeypatch.setattr(mod, "DB", db)
+    monkeypatch.setattr(auth, "REQUIRED", False)      # these are about the page itself; test_tutor_auth.py signs in
     monkeypatch.setattr(student, "build_flow",
                         lambda: build_flow(call=stub, find=lambda *a, **k: NOTES))
     monkeypatch.setattr(student, "settings", lambda: __import__("tests.test_tutor", fromlist=["S"]).S)

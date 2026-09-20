@@ -1,4 +1,4 @@
-import { useCallback, useState, type FC } from 'react'
+import { useCallback, useEffect, useRef, useState, type FC } from 'react'
 import { m } from 'motion/react'
 import { ChevronDownIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -10,6 +10,7 @@ import { useTutor } from '@/components/tutor/context'
 import { TwinView } from '@/components/twin/TwinView'
 import { MissionRoute } from '@/components/missions/MissionRoute'
 import { rise } from '@/design/motion'
+import { useActivity } from '@/lib/useActivity'
 
 const VIEW_IDS: View[] = ['study', 'twin', 'route']
 const fromHash = (): View => {
@@ -22,6 +23,18 @@ const fromHash = (): View => {
 export const Session: FC<{ onRestart: () => void }> = ({ onRestart }) => {
   const { snap } = useTutor()
   const [view, setView] = useState<View>(fromHash)
+
+  // Every answered question is a check-in: refresh the streak and the heatmap when one lands. (The first
+  // run is skipped; the app has just loaded the activity itself.)
+  const { refresh: refreshActivity } = useActivity()
+  const answered = snap.messages.filter((m) => m.kind === 'feedback').length
+  const seen = useRef(answered)
+  useEffect(() => {
+    if (answered !== seen.current) {
+      seen.current = answered
+      refreshActivity()
+    }
+  }, [answered, refreshActivity])
   const go = useCallback((v: View) => {
     setView(v)
     try {

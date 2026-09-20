@@ -33,8 +33,15 @@ export type Quiz = {
 /** A question answered in the student's own words. The rubric stays on the server. */
 export type OpenQ = { question: string; code: string | null; answered: Answered | null }
 
-/** A question answered by writing a program. The hidden tests never leave the server. */
-export type CodeTaskQ = { question: string; starter: string; answered: Answered | null }
+/** A question answered by writing a program. The hidden tests never leave the server. `stdio` programs read
+ * their input and print their answer (every language but Python); `function` ones define a function. */
+export type CodeTaskQ = {
+  question: string
+  starter: string
+  style: 'function' | 'stdio'
+  language: SessionLanguage | null // what it was written in; its editor runs it there whatever the sandbox picker says now
+  answered: Answered | null
+}
 
 export type LessonMsg = {
   id: string
@@ -103,7 +110,20 @@ export type ConceptProgress = {
   review_due: boolean
   beliefs: [string, number][]
 }
+export type LangRef = { id: string; version: string }
+
+/** The code sandbox's language and version, or the one a program question was written in. `label`: "Java 17". */
+export type SessionLanguage = { id: string; name: string; version: string; label: string }
+
+/** One language the code sandbox can run, and which of its versions this server has. */
+export type LanguageInfo = { id: string; name: string; versions: string[]; default: string; installed: Record<string, boolean> }
+export type Languages = {
+  languages: LanguageInfo[]
+  docker: boolean // false: Docker cannot be reached, so nothing can run
+}
+
 export type Progress = {
+  language: SessionLanguage
   concepts: ConceptProgress[]
   threshold: number
   mode: 'quick' | 'guided'
@@ -144,12 +164,31 @@ export class ApiError extends Error {
   }
 }
 
+/** Fired when the server says nobody is signed in (a sign-in that expired, say), so the app can go back
+ * to the sign-in screen instead of showing a half-working page. */
+export const SIGNED_OUT = 'tutor:signed-out'
+
+/** One day's worth of what a student did, and the streak that follows. See demo/tutor/activity.py. */
+export type Activity = {
+  today: string // the student's own date, YYYY-MM-DD
+  days: Record<string, number> // non-zero days in the heatmap's window: date -> answered questions + code runs
+  current_streak: number
+  longest_streak: number
+  at_risk: boolean // the streak is alive but today has nothing yet
+  checked_in_today: boolean
+  today_count: number
+  active_days: number
+  total: number
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const json = typeof init?.body === 'string'
   const res = await fetch(`/api${path}`, {
     ...init,
+    credentials: 'same-origin', // the sign-in is a cookie
     headers: json ? { 'Content-Type': 'application/json' } : undefined,
   })
+  if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event(SIGNED_OUT))
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -168,6 +207,14 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 const enc = encodeURIComponent
 
 export const api = {
+  // Who is signed in. `student` is null only when the server runs with login off (tests).
+  me: () => call<{ student: string | null; login_required: boolean }>('/auth/me'),
+  signUp: (name: string, password: string) => call<{ student: string }>('/auth/signup', post({ name, password })),
+  signIn: (name: string, password: string) => call<{ student: string }>('/auth/login', post({ name, password })),
+  signOut: () => call<{ ok: boolean }>('/auth/logout', post({})),
+  /** `tz` is the browser's offset, so a day is the student's own day. */
+  activity: () => call<Activity>(`/me/activity?tz=${new Date().getTimezoneOffset()}`),
+
   start: (
     student: string,
     concepts: string[],
@@ -191,10 +238,17 @@ export const api = {
   resume: (id: string) => call<Snapshot>(`/sessions/${id}/resume`, post({})),
 
   // The code coach
-  codeStatus: () => call<{ available: boolean; reason: string }>('/code/status'),
-  runCode: (id: string, code: string, expected: string | null, assisted = false) =>
-    call<CodeRun>(`/sessions/${id}/code`, post({ code, expected, assisted })),
-  suggest: (id: string, code: string) => call<Suggest>(`/sessions/${id}/suggest`, post({ code })),
+  codeStatus: (language: string, version: string) =>
+    call<{ available: boolean; reason: string }>(`/code/status?language=${enc(language)}&version=${enc(version)}`),
+  languages: () => call<Languages>('/languages'),
+  /** Pick the sandbox's language and version. It applies to the editor and to the NEXT program question only. */
+  setLanguage: (id: string, language: string, version: string | null) =>
+    call<Snapshot>(`/sessions/${id}/language`, post({ language, version })),
+  /** `lang` is a program question's own language; without it the sandbox's is used. */
+  runCode: (id: string, code: string, expected: string | null, assisted = false, stdin = '', lang?: LangRef) =>
+    call<CodeRun>(`/sessions/${id}/code`, post({ code, expected, assisted, stdin, language: lang?.id, version: lang?.version })),
+  suggest: (id: string, code: string, lang?: LangRef) =>
+    call<Suggest>(`/sessions/${id}/suggest`, post({ code, language: lang?.id, version: lang?.version })),
 
   // A student's own documents
   docs: (student: string) => call<{ docs: string[] }>(`/students/${enc(student)}/docs`),

@@ -10,7 +10,7 @@ from demo.tutor import coach, learners, session
 from demo.tutor.flow import build_flow
 from demo.tutor.sandbox import Result
 from demo.tutor.schema import LearnerModel
-from demo.tutor.stub import Stub, code_lesson
+from demo.tutor.stub import Stub, code_lesson, lesson
 from slice import runner
 from slice.store import Store
 from tests.test_tutor import S, find
@@ -22,13 +22,13 @@ FORGETS = "def total(prices):\n    return 0"           # fails total([1, 2, 3])
 NO_EMPTY = "def total(prices):\n    return sum(prices) if prices else None"
 
 
-def local_run(code, timeout=10):
+def local_run(code, timeout=10, **_):
     """Stands in for the Docker sandbox. Trusted test code only."""
     p = subprocess.run([sys.executable, "-I", "-"], input=code, capture_output=True, text=True, timeout=timeout)
     return Result(p.stdout, p.stderr, p.returncode)
 
 
-def program_run(tmp_path, code, *, run=local_run, ready=lambda: (True, ""), assisted=False, model=None):
+def program_run(tmp_path, code, *, run=local_run, ready=lambda *a, **k: (True, ""), assisted=False, model=None):
     store = Store(tmp_path / "r.db")
     if model:
         learners.save(store, model)
@@ -83,8 +83,9 @@ def test_a_crash_inside_a_check_is_reported_with_its_error_class(tmp_path):
 
 
 def test_a_timeout_is_a_runaway_loop(tmp_path):
-    store, run = program_run(tmp_path, "def total(p):\n    while True: pass",
-                             run=lambda code: Result("", "", None, timed_out=True))
+    def hangs_on_the_students_code(code, **k):     # the model's own solution must still pass its own tests
+        return Result("", "", None, timed_out=True) if "while True" in code else local_run(code)
+    store, run = program_run(tmp_path, "def total(p):\n    while True: pass", run=hangs_on_the_students_code)
     assert store.history(run, "check")[0].payload["misconception"] == "runaway-loop"
 
 
@@ -93,8 +94,21 @@ def test_a_syntax_error_is_tagged_from_the_error_class(tmp_path):
     assert store.history(run, "check")[0].payload["misconception"] == "syntax-error"
 
 
-def test_without_a_proven_sandbox_the_run_stops_and_says_why(tmp_path):
-    store, run = program_run(tmp_path, RIGHT, ready=lambda: (False, "Docker is not installed."))
+def test_without_a_proven_sandbox_the_check_is_multiple_choice_and_says_so(tmp_path):
+    store = Store(tmp_path / "r.db")
+    run = session.start_session(store, "s1", ["mutable-defaults"])
+    session.set_answer_mode(store, run, "code")
+    off = lambda *a, **k: (False, "Docker is not installed.")   # noqa: E731
+    runner.advance(store, run, build_flow(call=Stub({"teach": [lesson("A")]}), find=find, run=local_run, ready=off), S)
+    shown = store.latest(run, "lesson")
+    assert shown["quiz"] and not shown["code_task"]
+    assert "multiple choice" in shown["explanation"] and "Python 3.12" in shown["explanation"]
+
+
+def test_a_sandbox_that_dies_after_the_question_stops_the_run_and_says_why(tmp_path):
+    answers = iter([True, False])              # up when the question is written, gone when it is graded
+    store, run = program_run(tmp_path, RIGHT,
+                             ready=lambda *a, **k: (next(answers), "Docker is not installed."))
     [fail] = store.history(run, "failure")
     assert fail.payload["kind"] == "sandbox_unavailable" and "Docker is not installed" in fail.payload["detail"]
     assert not store.history(run, "check")
@@ -106,7 +120,7 @@ def test_the_browser_gets_the_question_and_starter_but_never_the_tests(tmp_path,
     stub = Stub({"teach": [code_lesson("A"), code_lesson("B")]})
     c, _ = make(tmp_path, monkeypatch, None, call=stub)
     monkeypatch.setattr(tutor_api, "flow_factory",
-                        lambda: build_flow(call=stub, find=find, run=local_run, ready=lambda: (True, "")))
+                        lambda: build_flow(call=stub, find=find, run=local_run, ready=lambda *a, **k: (True, "")))
     store = Store(Path(tutor_api.DB))
     run = session.start_session(store, "asha", ["mutable-defaults"])
     session.set_answer_mode(store, run, "code")
@@ -117,7 +131,8 @@ def test_the_browser_gets_the_question_and_starter_but_never_the_tests(tmp_path,
     [msg] = snap["messages"]
     assert msg["quiz"] is None and msg["open"] is None
     assert msg["code_task"] == {"question": "Write total(prices) that returns the sum of the list.",
-                                "starter": "def total(prices):\n    pass", "answered": None}
+                                "starter": "def total(prices):\n    pass", "style": "function", "answered": None,
+                                "language": {"id": "python", "name": "Python", "version": "3.12", "label": "Python 3.12"}}
     sent = json.dumps(snap)
     for secret in ("forgets-to-accumulate", "total([1, 2, 3])", "sum(prices)", "model_solution", "expected"):
         assert secret not in sent
@@ -133,7 +148,7 @@ def test_the_browser_gets_the_question_and_starter_but_never_the_tests(tmp_path,
 
 def test_the_mode_route_refuses_program_questions_without_a_sandbox(tmp_path, monkeypatch):
     c, _ = make(tmp_path, monkeypatch, {"teach": [code_lesson("A")]})
-    monkeypatch.setattr(tutor_api, "sandbox_ready", lambda: (False, "Docker is not installed."))
+    monkeypatch.setattr(tutor_api, "sandbox_ready", lambda *a, **k: (False, "Docker is not installed."))
     run = start(c)
     settle(c, run)
     r = c.post(f"/api/sessions/{run}/mode", json={"mode": "code"})
@@ -191,7 +206,8 @@ import pytest  # noqa: E402
 def test_the_real_sandbox_grades_a_right_a_wrong_and_a_runaway_program():
     from demo.tutor import sandbox
     ok, why = sandbox.available(force=True)
-    assert ok, why                                     # needs Docker running and the image pulled
+    if not ok:
+        pytest.skip(why)                               # needs Docker running and the image pulled
     task = json.loads(code_lesson("x"))["code_task"]
     assert coach.grade_program(task, RIGHT, sandbox.run).correct is True
     assert coach.grade_program(task, FORGETS, sandbox.run).misconception == "forgets-to-accumulate"

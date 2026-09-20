@@ -8,7 +8,7 @@ import json
 from slice import callback
 from slice.store import Store
 
-from . import learners
+from . import languages, learners
 from .schema import LearnerModel
 
 DOMAIN = "tutor"
@@ -63,6 +63,13 @@ def set_answer_mode(store: Store, run_id: str, mode: str) -> None:
 
 def set_use_docs(store: Store, run_id: str, on: bool) -> None:
     _set(store, run_id, use_docs=on)
+
+
+def set_language(store: Store, run_id: str, language: str, version: str | None = None) -> None:
+    """The code sandbox's language and version, chosen in the sandbox and remembered for next time. It never
+    touches what a lesson is about. Raises languages.UnknownLanguage for anything we cannot run."""
+    lang, version = languages.resolve(language, version)
+    _set(store, run_id, language=lang.id, version=version)
 
 
 def open_question(store: Store, run_id: str, kind: str):

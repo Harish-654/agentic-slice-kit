@@ -1,7 +1,12 @@
-import { useRef, useState, type FC, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FC, type FormEvent } from 'react'
 import { FileTextIcon, Loader2Icon, PaperclipIcon, XIcon } from 'lucide-react'
+import { ActivityHeatmap } from '@/components/activity/ActivityHeatmap'
+import { CheckInCard } from '@/components/activity/CheckInCard'
+import { StreakChip } from '@/components/activity/StreakChip'
 import { MasteryRing } from '@/components/atlas/MasteryRing'
 import { Mark } from '@/components/shell/Mark'
+import { SignOutButton } from '@/components/shell/SignOutButton'
+import { ThemeToggle } from '@/components/shell/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,11 +17,11 @@ import { ApiError, api } from '@/lib/api'
 
 const split = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
 
+/** `student` is whoever is signed in; the tutor never asks for a name any more. */
 export const StartScreen: FC<{
-  initialName: string
-  onStarted: (id: string, student: string) => void
-}> = ({ initialName, onStarted }) => {
-  const [name, setName] = useState(initialName)
+  student: string
+  onStarted: (id: string) => void
+}> = ({ student, onStarted }) => {
   const [topics, setTopics] = useState('')
   const [interests, setInterests] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -34,33 +39,30 @@ export const StartScreen: FC<{
   // Guided mode takes one topic, or a pasted exam question that names its own topic.
   const examText = exam.trim()
   const topicList = split(topics)
-  const ready = !!name.trim() && (guided ? topicList.length === 1 || (topicList.length === 0 && !!examText) : topicList.length > 0)
+  const ready = guided ? topicList.length === 1 || (topicList.length === 0 && !!examText) : topicList.length > 0
 
   // A returning student may already have documents on the server.
-  const lookUp = () => {
-    const who = name.trim()
-    if (!who) return setExisting([])
-    api.docs(who).then((r) => setExisting(r.docs), () => setExisting([]))
-  }
+  useEffect(() => {
+    api.docs(student).then((r) => setExisting(r.docs), () => setExisting([]))
+  }, [student])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    const who = name.trim()
     if (!ready) return
     setBusy(true)
     setError(null)
     try {
-      if (files.length) await api.upload(who, files)
-      if (sample) await api.sample(who)
+      if (files.length) await api.upload(student, files)
+      if (sample) await api.sample(student)
       const { id } = await api.start(
-        who,
+        student,
         topicList,
         split(interests),
         useDocs && haveDocs,
         guided ? 'guided' : 'quick',
         guided && examText ? examText : null,
       )
-      onStarted(id, who)
+      onStarted(id)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start a session.')
       setBusy(false)
@@ -68,7 +70,16 @@ export const StartScreen: FC<{
   }
 
   return (
-    <div className="mx-auto grid min-h-full max-w-6xl items-center gap-10 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-16">
+    <div className="mx-auto flex min-h-full max-w-6xl flex-col px-4 sm:px-8">
+      <div className="flex items-center justify-between gap-3 pt-4">
+        <p className="eyebrow">Learning as {student}</p>
+        <div className="flex items-center gap-1">
+          <StreakChip className="mr-1" />
+          <ThemeToggle />
+          <SignOutButton />
+        </div>
+      </div>
+      <div className="grid items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-16">
       <div className="max-w-xl">
         <div className="text-route flex items-center gap-2.5">
           <Mark className="size-9" />
@@ -111,22 +122,10 @@ export const StartScreen: FC<{
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Your name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={lookUp}
-                placeholder="So it can remember you next time"
-                required
-                autoFocus
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
               <Label htmlFor="topics">Topics</Label>
               <Input
                 id="topics"
+                autoFocus
                 value={topics}
                 onChange={(e) => setTopics(e.target.value)}
                 placeholder={guided ? 'e.g. inheritance' : 'e.g. recursion, list slicing, how decorators work'}
@@ -204,7 +203,7 @@ export const StartScreen: FC<{
 
               {existing.length > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Already saved for {name.trim()}: {existing.join(', ')}
+                  Already saved for {student}: {existing.join(', ')}
                 </p>
               ) : null}
               {files.length > 0 ? (
@@ -261,6 +260,13 @@ export const StartScreen: FC<{
           </form>
         </CardContent>
       </Card>
+      </div>
+
+      {/* Where the student stands: today's check-in, and everything they have done over the year. */}
+      <div className="grid grid-cols-1 gap-5 pb-12 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+        <CheckInCard />
+        <ActivityHeatmap />
+      </div>
     </div>
   )
 }

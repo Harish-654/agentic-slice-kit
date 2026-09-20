@@ -11,7 +11,7 @@ from .schema import PlanDraft
 MAX_PREREQS, MAX_SUBTOPICS = 3, 4
 SIMILAR = 0.85                  # difflib ratio on canonical keys that counts as the same concept
 _STOP = {"a", "an", "the", "of", "in", "and", "to", "for", "with", "on", "basics", "basic",
-         "introduction", "intro", "python"}
+         "introduction", "intro", "python", "javascript", "java", "node", "nodejs", "cpp"}   # a concept is the idea, not the language
 
 
 def key(name: str) -> str:

@@ -106,7 +106,7 @@ const Footer: FC = () => {
   const writing = canAnswer && lesson?.open != null
   const nextWritten = snap.progress.answer_mode === 'text'
   const nextProgram = snap.progress.answer_mode === 'code'
-  const code = useCodeStatus()
+  const code = useCodeStatus(snap.progress.language.id, snap.progress.language.version)
   const wide = window.matchMedia('(min-width: 768px)').matches
   return (
     <div className="flex flex-col gap-3">

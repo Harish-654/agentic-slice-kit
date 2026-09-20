@@ -1,7 +1,8 @@
-# Cognitive-twin tutor for Python
+# Cognitive-twin tutor
 
-**For judges.** This is a Python tutor that remembers what each student gets
-wrong and teaches the next lesson differently. It runs in a browser: the student
+**For judges.** This is a tutor for any topic that remembers what each student gets
+wrong and teaches the next lesson differently. Beside every lesson sits a code sandbox
+that runs Python, JavaScript, Java and C++ (each in a version the student picks). It runs in a browser: the student
 picks topics, reads a short lesson, answers a check, and says how sure they were.
 It is built on the Agentic Slice Kit, the starter kit from the organisers; the
 kit's own guide for participants is kept further down this page, below the divider.
@@ -55,11 +56,20 @@ Then open <http://127.0.0.1:8001> in a browser. Stop the server with Ctrl+C.
   proven here.
 - **No Node.** The built web page is committed in `web/ui/dist/`, and the Python
   server serves it. Node is only needed to change the page.
-- **No Docker.**
+- **Docker is optional, and only for running code.** Lessons, quizzes and written
+  answers need none. Program questions and the code coach run a student's code in a
+  throwaway Docker container (no network, read-only, non-root, memory and time
+  limited), one image per language and version. Pull them once with
+  `python scripts/pull_runtimes.py` (the default version of each language, about
+  1.5 GB; `--list` shows what is already here). A language whose image is missing
+  still teaches: its program questions become multiple choice and the page says so.
 - **A free OpenRouter key is enough** (as the team reports; this was not checked
   independently). Get one at openrouter.ai. Lessons call the models named in
   `.env.example`.
-- **The tests need no key** and no network: `python -m pytest`.
+- **The tests need no key, no network and no Docker:** `python -m pytest`. The ones
+  that need a live key or Docker (with the runtime images pulled) skip themselves
+  when it is missing. Checked here with Docker hidden from `PATH`: all 40 Docker
+  tests skip.
 - **Internet, once, for documents.** The first document upload downloads a small
   embedding model (measured: 65 MB on disk, about 9 s download, about 16 s for the
   first upload, on a fast connection). It is cached after that.
@@ -79,7 +89,7 @@ and it creates `.env` from `.env.example` for you (you still add the key).
 **We could not test Codespaces (Python 3.12) at all.** Treat this paragraph as
 untested.
 
-**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally). Fresh `git clone` of `main`, a brand-new venv,
+**Verified on a fresh clone** (run by the team's AI coding assistant, following this page literally; this was at an earlier commit, before sign-in and the code sandbox, and the suite has since grown to 462 tests). Fresh `git clone` of `main`, a brand-new venv,
 Python 3.14.7, Linux, no `.env`, no `run.db`, no `uploads/`. Every command above
 ran as written. `pip install` finished cleanly.
 `python -m pytest -k "not integration"` gives **148 passed, 3 deselected** in
@@ -97,8 +107,9 @@ tour below come from the code and the team, not from a run we watched.
 
 What still works without a key:
 
-- `python -m pytest` runs (148 pass, 3 are skipped for lack of a key). It uses a
-  scripted stand-in for the model, so it exercises the whole teach-check-adapt loop.
+- `python -m pytest` runs (the tests that need a live key or Docker skip themselves).
+  It uses a scripted stand-in for the model, so it exercises the whole
+  teach-check-adapt loop.
 - The server starts, the chat page and the classic page (`/classic/`) load.
 - Adding documents (or "Try sample notes") works: embeddings are computed on your
   machine.
@@ -139,10 +150,13 @@ The labels below are copied from the page's source
 (`web/ui/src/components/tutor/`). What each step should show is read from the code
 and the offline tests; the model's wording will vary.
 
-1. **Start with a name and topics, no documents.** The start screen says "What do
-   you want to learn?". Type a name (say `judge`), and in **Topics** type
-   `mutable defaults, list slicing`. Leave the documents box alone. Click **Start
-   learning**.
+1. **Sign in, then start with topics and no documents.** The first page is a sign-in
+   screen. Choose **Create account**, enter a name (say `judge`) and a password of 8
+   or more characters (repeat it), and create it. The start screen then says "What
+   do you want to learn?" and greets you as `judge`; it never asks for a name again.
+   In **Topics** type `mutable defaults, list slicing`. Leave the documents box
+   alone. Click **Start learning**. (The start screen has no language choice: the
+   tutor teaches any topic, and languages belong to the code sandbox, step 8.)
    Expect: a lesson with the topic as heading, a badge such as "Straight
    explanation", and a badge **General knowledge** (hover it: "Written by the AI
    from what it knows. It has not been checked against your documents."). No
@@ -180,20 +194,39 @@ and the offline tests; the model's wording will vary.
    ("Explain it in your own words…") is locked until you choose a confidence, then
    press Enter. Expect "Checking your answer…" for a while: a model grades it.
 
-6. **A topic outside the documents.** Click **New session** (top right). Type the
-   same name, leave the field (the start screen then says "Already saved for
-   judge: ..."), type the topic `photosynthesis`, switch on **Use my documents as
-   the source of truth**, click **Start learning**.
+6. **A topic outside the documents.** Click **New session** (top right). The start
+   screen says "Already saved for judge: ..." under your documents. Type the topic
+   `photosynthesis`, switch on **Use my documents as the source of truth**, click
+   **Start learning**.
    Expect, quickly: "“photosynthesis” is not in your documents." with two buttons,
    **Teach it from general knowledge** and **Skip this topic**. The tutor does not
    guess. Pick either; the first gives a lesson badged **General knowledge**.
 
-7. **Start again with the same name and see it remember.** Click **New session**
-   and type the name from step 1 exactly (upper and lower case count). Use
-   `mutable defaults, list slicing` again. The **What you know** panel already shows
-   your earlier percentages ("Learning", "Review due" or "Got it") and **Ideas to
-   watch** still lists the idea you got wrong. This memory is stored in `run.db` on
-   the server, not in the browser.
+7. **Start again and see it remember.** Click **New session** (or **Sign out** and
+   sign in again with the same account). Use `mutable defaults, list slicing` again.
+   The **What you know** panel already shows your earlier percentages ("Learning",
+   "Review due" or "Got it") and **Ideas to watch** still lists the idea you got
+   wrong. This memory is stored in `run.db` on the server, not in the browser, and
+   belongs to the account: another account starts from nothing.
+
+8. **Try the code sandbox** (needs Docker and the runtime images, see "What you
+   need"). In the right panel, under **Code sandbox**, the **Language** and
+   **Version** pickers start on Python 3.12, on every topic, including
+   `photosynthesis`. Type `print(6 * 7)` and click **Run**: expect `42`. Pick
+   **Java** and a version: the editor becomes a Java one, and a version with no
+   runtime here reads "(no code)" and shows why, with the `docker pull` line, while
+   the pickers stay. **Program input (optional)** is what the program reads. Then
+   switch on **Ask my next question as a program to write** (bottom of the thread),
+   answer the question on screen, and the next card is headed **Write a program**,
+   written in the sandbox's language, with that language ("Java 17") beside **Run**.
+   It is checked on hidden inputs when you click **Submit program**. Changing the
+   picker afterwards affects the next question, not this one. Without Docker the
+   sandbox says it is switched off and program questions become multiple choice.
+
+9. **Watch the streak.** After you answer a question the 🔥 number in the top bar
+   goes to 1, and today's square on the **Learning activity** heatmap (on the start
+   screen, under the form) fills in. A day counts if you answered a question or ran
+   your own code, in your own timezone.
 
 **The progress panel** (right side) shows **What you know**: one percentage per topic,
 `0%` and "not started" until you answer something, "Got it" at 75% or more, and
@@ -201,6 +234,37 @@ and the offline tests; the model's wording will vary.
 **Ideas to watch** lists the wrong ideas your answers pointed to, with a count.
 
 ---
+
+## The code sandbox: languages and versions
+
+The tutor teaches anything. The **code sandbox** (the "Code sandbox" panel beside every
+lesson, on every topic) is the one place a language is chosen: a **Language** and a
+**Version** picker above the editor. The choice is remembered for next time. It changes
+what the editor runs and what the *next program question* is written in. It never changes
+what a lesson is about: lessons, quizzes, plans and grading follow the topic, and the start
+screen asks only what you want to learn.
+
+| Language | Versions (default first) | Runs in |
+|---|---|---|
+| Python | 3.12, 3.9, 3.10, 3.11, 3.13 | `python:<v>-slim` |
+| JavaScript | Node 22, 18, 20 | `node:<v>-slim` |
+| Java | 21, 8, 11, 17 | `eclipse-temurin:<v>-jdk` (the class holding `main` is found automatically) |
+| C++ | C++17, 11, 14, 20, 23 | `gcc:14` with `-std=c++<v>` |
+
+- **Program questions.** Python keeps function-style questions (write `total(prices)`).
+  The other languages read input and print output, and are judged on hidden inputs. A
+  failing test names the wrong idea it exposes, never the answer.
+- **A program question keeps its language.** It is written, labelled ("Java 17") and graded in
+  the language the sandbox was set to when it was asked, even if you change the picker later.
+- **A question is checked before you see it.** The model writes the hidden tests and a
+  model solution; the solution is run against its own tests in the sandbox first. If it
+  fails, the question is rewritten once, then replaced by a multiple-choice one.
+- **Mastery is shared across languages** (the concept ids are the same), so knowing
+  "recursion" in Python counts when you switch to Java. Per-language mastery is not built.
+- The sandbox shows on every topic, so a student can ask for "a program" about any subject.
+- Single-file programs only, no interactive input, and compiled languages take a few
+  seconds per run. Adding a language is one entry in `demo/tutor/languages.py` plus its
+  error patterns in `demo/tutor/coach.py`.
 
 ## What outside users told us, and what we changed
 
@@ -267,9 +331,21 @@ judged on".
   gitignored. Start the server from the repo folder.
 - To start clean: stop the server, then delete both.
   `rm -rf run.db uploads` (Windows: `del run.db` and `rmdir /s /q uploads`).
-- Students are identified only by the name typed, spelled exactly the same way
-  each time. There is no login: anyone who types the same name sees, and can
-  delete, that student's documents (code).
+- **Students sign in.** The first page is a sign-in screen: create an account
+  (a name and a password of 8 or more characters), and sign in with it after
+  that. Passwords are stored hashed, a sign-in is a random token in an `HttpOnly`
+  cookie, and every session and document is locked to its owner. A name that
+  was used *before* accounts existed (it already has sessions in `run.db`) is
+  locked, so nobody can take over someone else's progress by signing up first.
+  There is no email, so the person running the server is the recovery path:
+  `python scripts/manage_accounts.py reset <name>` gives an account a new
+  password, and `claim <name>` deliberately attaches an old name to a new
+  password. `list` shows the accounts.
+- **Streaks and the activity heatmap** need nothing stored. Every answered
+  question and every run of a student's own code is already a timestamped record;
+  a day counts as a check-in if the student did at least one, in the student's
+  own timezone. The 🔥 streak is the number of days in a row; it stays alive
+  until midnight, then breaks if a whole day is missed.
 - Stop the server with Ctrl+C in its terminal. Ports: 8001 in the command above
   (any free port works: change `--port` and the address); 8000 in Codespaces. By
   default the server listens on 127.0.0.1, so only your own machine can reach it.
@@ -293,7 +369,9 @@ Only things we reproduced, or read directly from the code (marked "code").
 | An upload is rejected (reproduced) | Only `.md`, `.txt`, `.pdf`, `.docx`; at most 5 MB per file; at most 10 files per student. The page shows the reason, for example `'a.exe': only .docx, .md, .pdf, .txt files can be added.` or `You can keep up to 10 documents. Remove one first.` A broken PDF says `could not be read`. |
 | The first upload (or **Try sample notes**) takes a while, or fails offline | It downloads a 65 MB embedding model once and needs internet. The default cache is your system temp folder (`/tmp/fastembed_cache` on Linux), so a reboot can clear it. Set `FASTEMBED_CACHE_PATH` to keep it. |
 | A session stuck on "Reading your teacher’s notes and preparing your first lesson…" or "Writing your next lesson…" | Normal for up to about 25 s. Longer: the model call is waiting on a slow provider (up to 120 s per call). If the server was restarted mid-lesson, reload the page: it resumes an interrupted session by itself (code, not reproduced). Otherwise click **New session**. |
-| The tutor does not remember you (code) | The name is different (upper and lower case count), or you deleted `run.db`. |
+| "Running code is switched off on this server" or "The Java 17 runtime is not installed. Run: docker pull …" (code) | That language's Docker image is missing, or Docker is not running. Start Docker, then run the `docker pull` line it prints, or `python scripts/pull_runtimes.py java 17`. No restart needed: a failed check is retried after 30 seconds. |
+| The tutor does not remember you (code) | You signed in with a different account (a different name is a different student), or you deleted `run.db`. |
+| "Too many wrong passwords. Try again in N seconds." when signing in (code) | Five wrong passwords in 15 minutes lock that name for a minute. Wait, then try again. A forgotten password is reset by whoever runs the server: `python scripts/manage_accounts.py reset <name>`. |
 
 ---
 
@@ -304,12 +382,19 @@ What a judge would read:
 - [`demo/tutor/`](demo/tutor/): the tutor. `flow.py` (the loop), `learner.py` and
   `learners.py` (what it remembers), `session.py` (starting, answering),
   `library.py` (a student's documents), `prompts/` (what the model is told),
-  `stub.py` (the scripted model for offline tests).
+  `languages.py` and `sandbox.py` (the supported languages, and running code safely),
+  `coach.py` (grading programs, error hints), `stub.py` (the scripted model for offline tests).
 - [`web/tutor_api.py`](web/tutor_api.py): the JSON API behind the page.
+  [`web/auth.py`](web/auth.py): sign-up, sign-in and the cookie.
   [`web/student.py`](web/student.py): the server, and the `/classic/` page.
+  `demo/tutor/accounts.py` (accounts and sign-in tokens) and `activity.py` (the
+  streak and the heatmap, worked out from records that already exist).
 - [`web/ui/`](web/ui/): the chat page's source (React, Vite, Tailwind, shadcn/ui,
   assistant-ui). The built files are committed in `web/ui/dist/`.
-- [`tests/`](tests/): 151 tests; `test_tutor*.py` cover the tutor.
+- [`tests/`](tests/): 462 tests; `test_tutor*.py` cover the tutor. 40 of them
+  (37 in `test_tutor_runtimes.py`, one each in `test_tutor_coach.py`,
+  `test_tutor_probe_code.py` and `test_tutor_program.py`) need Docker
+  and are marked `integration`; `python -m pytest -m "not integration"` skips them.
 - [`demo/tutor/TUTOR-SPEC.md`](demo/tutor/TUTOR-SPEC.md): the AgentSpec.
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): the kit's design, with links to the
   lines of code.
