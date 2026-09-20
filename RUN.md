@@ -5,6 +5,10 @@ Run from the repository root (the folder that contains `.git`). Set your OpenRou
     export OPENROUTER_API_KEY=your-key
     python -m uvicorn web.student:app --port 8001
 
+For Codespaces 
+
+    python -m uvicorn web.student:app --host 0.0.0.0 --port 8000
+
 Then open <http://127.0.0.1:8001> in a browser and choose **Create account** (any name, a password of 8 or more characters).
 
 - PowerShell instead of bash: `$env:OPENROUTER_API_KEY = "your-key"`.
